@@ -17,6 +17,20 @@ from flask import (
 )
 import bcrypt
 
+# --- Auto lingua ---
+from flask import request
+import locale
+
+def detect_language():
+    try:
+        lang = request.accept_languages.best_match(
+            ["it", "en", "es", "fr", "de", "pt", "ro", "ru", "ar", "hi", "ja", "zh"]
+        )
+        return lang or "en"
+    except:
+        return "en"
+
+
 # If you use Groq, keep import; if not available it's optional.
 try:
     from groq import Groq
@@ -136,6 +150,7 @@ def get_preferred_lang():
 # ---------------------------
 # Admin / login decorators
 # ---------------------------
+
 def login_required(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
@@ -242,58 +257,69 @@ def register():
     if request.method == "POST":
         uname = (request.form.get("username") or "").strip()
         pw = (request.form.get("password") or "")
+
         if not uname or not pw:
-            flash("Username and password required")
-            return render_template("auth.html", title="Register", button="Create account", extra=None)
+            return "Username and password required", 400
+
         if uname in USERS:
-            flash("Username already exists")
-            return render_template("auth.html", title="Register", button="Create account", extra=None)
+            return "Username already exists", 400
+
         USERS[uname] = {
-            "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(),
+            "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()),
             "premium": False,
             "is_admin": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "history": [],
-            "daily_count": {"date": now_ymd(), "count": 0}
+            "created_at": "now",
+            "history": []
         }
-        persist_users_and_codes()
+
         session["username"] = uname
-        session.pop("is_guest", None)
         return redirect(url_for("home"))
-    # GET
-    session.setdefault("lang", get_preferred_lang())
-    return render_template("auth.html", title="Register", button="Create account", extra=None)
+
+    return render_template("auth.html", title="Register", button="Create account")
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         uname = (request.form.get("username") or "").strip()
         pw = (request.form.get("password") or "")
+
         if not uname or not pw:
-            flash("Username and password required")
-            return render_template("auth.html", title="Login", button="Login", extra=None)
+            return "Username and password required", 400
+
         u = USERS.get(uname)
         if not u:
-            flash("Invalid credentials")
-            return render_template("auth.html", title="Login", button="Login", extra=None)
+            return "Invalid credentials", 400
+
         ph = u.get("password_hash")
         if isinstance(ph, str):
             ph = ph.encode()
+
         if ph and bcrypt.checkpw(pw.encode(), ph):
             session["username"] = uname
-            session.pop("is_guest", None)
-            # cleanup old history for non-premium
-            cleanup_history(uname)
             return redirect(url_for("home"))
-        flash("Invalid credentials")
-        return render_template("auth.html", title="Login", button="Login", extra=None)
-    session.setdefault("lang", get_preferred_lang())
-    return render_template("auth.html", title="Login", button="Login", extra=None)
+
+        return "Invalid credentials", 400
+
+    return render_template("auth.html", title="Login", button="Login")
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("welcome"))
+
+@app.route("/guest", methods=["POST"])
+def guest():
+    session["username"] = "guest_" + secrets.token_hex(4)
+    session["guest"] = True
+    USERS[session["username"]] = {
+        "premium": False,
+        "is_admin": False,
+        "created_at": "guest",
+        "history": []
+    }
+    return redirect(url_for("home"))
+
 
 # ---------------------------
 # Home & chat endpoints
@@ -568,3 +594,4 @@ if __name__ == "__main__":
     # ensure DATA reflects current USERS and codes before run
     persist_users_and_codes()
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
+
