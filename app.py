@@ -675,6 +675,18 @@ CHAT_HTML = """
         
         <div class="user-info">
             <div class="user-name">👤 {{ username }}</div>
+            {% if is_guest %}
+            <span class="plan-badge plan-free">OSPITE</span>
+            <p style="font-size: 0.85rem; color: #8e8ea0; margin: 0.5rem 0;">
+                Crea un account per salvare le tue conversazioni!
+            </p>
+            <button class="upgrade-btn" onclick="location.href='/register'">
+                ✨ Registrati
+            </button>
+            <button class="logout-btn" onclick="location.href='/login'">
+                🔐 Accedi
+            </button>
+            {% else %}
             <span class="plan-badge {{ 'plan-premium' if premium else 'plan-free' }}">
                 {{ 'PREMIUM ⭐' if premium else 'FREE' }}
             </span>
@@ -689,6 +701,7 @@ CHAT_HTML = """
             <button class="logout-btn" onclick="location.href='/logout'">
                 🚪 Logout
             </button>
+            {% endif %}
         </div>
     </div>
     
