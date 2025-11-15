@@ -1,4 +1,4 @@
-# app.py - EMI SUPER BOT (VERSIONE SENZA ERRORI)
+# app.py - EMI SUPER BOT (VERSIONE COMPLETA CON UI STILE CHATGPT)
 import os
 import time
 import secrets
@@ -9,7 +9,7 @@ from hashlib import sha1
 from hmac import new as hmac_new
 
 from flask import (
-    Flask, request, jsonify, session, render_template,
+    Flask, request, jsonify, session, render_template_string,
     redirect, url_for, flash
 )
 import bcrypt
@@ -37,18 +37,15 @@ GUMROAD_SECRET = os.getenv("GUMROAD_SECRET", None)
 PORT = int(os.getenv("PORT", "10000"))
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
-# App init
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__)
 app.secret_key = FLASK_SECRET
 
-# Inizializza client Groq solo se disponibile
 client = None
 if GROQ_AVAILABLE and GROQ_API_KEY:
     try:
         client = Groq(api_key=GROQ_API_KEY)
     except Exception as e:
         app.logger.error(f"Groq init error: {e}")
-        client = None
 
 os.makedirs(STATIC_UPLOADS, exist_ok=True)
 os.makedirs(STATIC_GENERATED, exist_ok=True)
@@ -62,7 +59,6 @@ def load_data():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # Assicura che tutte le chiavi esistano
             if "users" not in data:
                 data["users"] = {}
             if "valid_codes" not in data:
@@ -129,16 +125,6 @@ def persist_users_and_codes():
     except Exception as e:
         app.logger.error(f"persist error: {e}")
 
-def get_preferred_lang():
-    al = request.headers.get("Accept-Language", "")
-    if not al:
-        return "it"  # Default italiano
-    try:
-        lang = al.split(",")[0].split("-")[0].lower()
-        return lang if lang else "it"
-    except:
-        return "it"
-
 # ---------------------------
 # Decorators
 # ---------------------------
@@ -159,7 +145,7 @@ def admin_required(f):
         u = USERS.get(uname)
         if u and u.get("is_admin"):
             return f(*args, **kwargs)
-        supplied = request.args.get("admin_pw") or request.form.get("admin_pw") or request.headers.get("X-Admin-Pw")
+        supplied = request.args.get("admin_pw") or request.form.get("admin_pw")
         if ADMIN_PASSWORD_ENV and supplied == ADMIN_PASSWORD_ENV:
             return f(*args, **kwargs)
         return "Admin access required", 403
@@ -171,33 +157,11 @@ def admin_required(f):
 def ensure_demo_users():
     changed = False
     if "admin" not in USERS:
-        pw = "sB5Zj_@=ymQ!QGmd"
+        pw = "admin123"
         USERS["admin"] = {
             "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(),
             "premium": True,
             "is_admin": True,
-            "created_at": datetime.utcnow().isoformat(),
-            "history": [],
-            "daily_count": {"date": now_ymd(), "count": 0}
-        }
-        changed = True
-    if "utente1" not in USERS:
-        pw = "efKgOaM^H0Uiq*"
-        USERS["utente1"] = {
-            "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(),
-            "premium": False,
-            "is_admin": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "history": [],
-            "daily_count": {"date": now_ymd(), "count": 0}
-        }
-        changed = True
-    if "premiumtester" not in USERS:
-        pw = "CtBVZ2)i!j4AosyT"
-        USERS["premiumtester"] = {
-            "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(),
-            "premium": True,
-            "is_admin": False,
             "created_at": datetime.utcnow().isoformat(),
             "history": [],
             "daily_count": {"date": now_ymd(), "count": 0}
@@ -209,28 +173,714 @@ def ensure_demo_users():
 ensure_demo_users()
 
 # ---------------------------
+# HTML TEMPLATES
+# ---------------------------
+WELCOME_HTML = """
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMI SUPER BOT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 450px;
+            width: 90%;
+        }
+        h1 {
+            font-size: 2.5rem;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        p {
+            color: #666;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #e0e0e0;
+            transform: translateY(-2px);
+        }
+        .btn-guest {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        .btn-guest:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 EMI SUPER BOT</h1>
+        <p>Il tuo assistente AI intelligente</p>
+        <form action="/login" method="get">
+            <button type="submit" class="btn btn-primary">🔐 Accedi</button>
+        </form>
+        <form action="/register" method="get">
+            <button type="submit" class="btn btn-secondary">✨ Registrati</button>
+        </form>
+        <form action="/guest" method="post">
+            <button type="submit" class="btn btn-guest">👤 Continua come Ospite</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+AUTH_HTML = """
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - EMI SUPER BOT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 450px;
+            width: 90%;
+        }
+        h1 {
+            font-size: 2rem;
+            color: #667eea;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .flash {
+            background: #fee;
+            color: #c33;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        input {
+            width: 100%;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border 0.3s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 1rem;
+            margin: 1rem 0 0.5rem 0;
+            border: none;
+            border-radius: 10px;
+            background: #667eea;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        a {
+            display: block;
+            text-align: center;
+            color: #667eea;
+            text-decoration: none;
+            margin-top: 1rem;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}
+          {% endif %}
+        {% endwith %}
+        <form method="post">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">{{ button }}</button>
+        </form>
+        <a href="/">← Torna indietro</a>
+    </div>
+</body>
+</html>
+"""
+
+CHAT_HTML = """
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMI SUPER BOT - Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #343541;
+            color: #ececf1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* SIDEBAR */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100vh;
+            background: #202123;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+        }
+        .new-chat-btn {
+            background: transparent;
+            border: 1px solid #565869;
+            color: #ececf1;
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: background 0.2s;
+        }
+        .new-chat-btn:hover {
+            background: #343541;
+        }
+        .user-info {
+            margin-top: auto;
+            padding: 1rem;
+            border-top: 1px solid #565869;
+        }
+        .user-name {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .plan-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .plan-free {
+            background: #565869;
+            color: #ececf1;
+        }
+        .plan-premium {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000;
+        }
+        .usage {
+            font-size: 0.85rem;
+            color: #8e8ea0;
+            margin-bottom: 0.5rem;
+        }
+        .upgrade-btn, .logout-btn {
+            width: 100%;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .upgrade-btn {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000;
+        }
+        .upgrade-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 215, 0, 0.4);
+        }
+        .logout-btn {
+            background: transparent;
+            border: 1px solid #565869;
+            color: #ececf1;
+        }
+        .logout-btn:hover {
+            background: #343541;
+        }
+        
+        /* MAIN CHAT */
+        .main {
+            margin-left: 260px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            padding: 1.5rem;
+            margin: 0.5rem auto;
+            max-width: 800px;
+            width: 100%;
+            display: flex;
+            gap: 1.5rem;
+        }
+        .message.user {
+            background: #343541;
+        }
+        .message.bot {
+            background: #444654;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        .message-content {
+            flex: 1;
+            line-height: 1.6;
+        }
+        
+        /* INPUT AREA */
+        .input-area {
+            border-top: 1px solid #565869;
+            padding: 1.5rem;
+            background: #343541;
+        }
+        .input-container {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+        }
+        #messageInput {
+            width: 100%;
+            padding: 1rem 3rem 1rem 1rem;
+            border: 1px solid #565869;
+            border-radius: 12px;
+            background: #40414f;
+            color: #ececf1;
+            font-size: 1rem;
+            resize: none;
+            min-height: 52px;
+            max-height: 200px;
+        }
+        #messageInput:focus {
+            outline: none;
+            border-color: #8e8ea0;
+        }
+        #sendBtn {
+            position: absolute;
+            right: 0.5rem;
+            bottom: 0.5rem;
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            background: #19c37d;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: background 0.2s;
+        }
+        #sendBtn:hover {
+            background: #15a76a;
+        }
+        #sendBtn:disabled {
+            background: #565869;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: flex;
+            gap: 0.3rem;
+            padding: 0.5rem 0;
+        }
+        .loading div {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #8e8ea0;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loading div:nth-child(1) { animation-delay: -0.32s; }
+        .loading div:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        /* MODAL PREMIUM */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: #202123;
+            padding: 2rem;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .modal h2 {
+            color: #ffd700;
+            margin-bottom: 1rem;
+        }
+        .modal ul {
+            list-style: none;
+            margin: 1rem 0;
+        }
+        .modal li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        .modal li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #19c37d;
+            font-weight: bold;
+        }
+        .modal input {
+            width: 100%;
+            padding: 0.75rem;
+            margin: 1rem 0;
+            border: 1px solid #565869;
+            border-radius: 8px;
+            background: #40414f;
+            color: #ececf1;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+        .modal button {
+            flex: 1;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .modal .btn-buy {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #000;
+        }
+        .modal .btn-code {
+            background: #565869;
+            color: #ececf1;
+        }
+        .modal .btn-close {
+            background: transparent;
+            border: 1px solid #565869;
+            color: #ececf1;
+        }
+    </style>
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <button class="new-chat-btn" onclick="location.reload()">
+            ➕ Nuova Chat
+        </button>
+        
+        <div class="user-info">
+            <div class="user-name">👤 {{ username }}</div>
+            <span class="plan-badge {{ 'plan-premium' if premium else 'plan-free' }}">
+                {{ 'PREMIUM ⭐' if premium else 'FREE' }}
+            </span>
+            {% if not premium %}
+            <div class="usage">Messaggi: {{ used_today }}/{{ free_limit }}</div>
+            {% endif %}
+            {% if not premium %}
+            <button class="upgrade-btn" onclick="showPremium()">
+                ⭐ Passa a Premium
+            </button>
+            {% endif %}
+            <button class="logout-btn" onclick="location.href='/logout'">
+                🚪 Logout
+            </button>
+        </div>
+    </div>
+    
+    <!-- MAIN CHAT -->
+    <div class="main">
+        <div class="chat-container" id="chatContainer">
+            {% for msg in history %}
+            <div class="message {{ msg.role }}">
+                <div class="avatar">{{ '👤' if msg.role == 'user' else '🤖' }}</div>
+                <div class="message-content">{{ msg.content }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="input-area">
+            <div class="input-container">
+                <textarea id="messageInput" placeholder="Scrivi un messaggio..." rows="1"></textarea>
+                <button id="sendBtn" onclick="sendMessage()">▲</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODAL PREMIUM -->
+    <div class="modal" id="premiumModal">
+        <div class="modal-content">
+            <h2>⭐ EMI SUPER BOT Premium</h2>
+            <p>Sblocca tutto il potenziale dell'AI:</p>
+            <ul>
+                <li>Messaggi illimitati</li>
+                <li>Modello AI più potente (70B)</li>
+                <li>Cronologia estesa (40 coppie)</li>
+                <li>Supporto prioritario</li>
+            </ul>
+            <div class="modal-buttons">
+                <button class="btn-buy" onclick="window.open('{{ buy_link }}', '_blank')">
+                    💳 Acquista Premium
+                </button>
+                <button class="btn-code" onclick="showCodeInput()">
+                    🎟️ Ho un Codice
+                </button>
+            </div>
+            <div id="codeInput" style="display:none;">
+                <input type="text" id="premiumCode" placeholder="Inserisci codice premium">
+                <button class="btn-buy" onclick="redeemCode()" style="width:100%">Attiva</button>
+            </div>
+            <button class="btn-close" onclick="hidePremium()" style="margin-top:1rem;width:100%">
+                Chiudi
+            </button>
+        </div>
+    </div>
+    
+    <script>
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+        
+        // Send on Enter
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Disable input
+            sendBtn.disabled = true;
+            messageInput.disabled = true;
+            
+            // Add user message
+            addMessage('user', message);
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            
+            // Add loading
+            const loadingId = addLoading();
+            
+            try {
+                const res = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                
+                const data = await res.json();
+                
+                removeLoading(loadingId);
+                
+                if (data.error) {
+                    addMessage('bot', '❌ ' + data.error);
+                } else {
+                    addMessage('bot', data.reply);
+                }
+            } catch (error) {
+                removeLoading(loadingId);
+                addMessage('bot', '❌ Errore di connessione. Riprova.');
+            }
+            
+            // Re-enable input
+            sendBtn.disabled = false;
+            messageInput.disabled = false;
+            messageInput.focus();
+        }
+        
+        function addMessage(role, content) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + role;
+            msgDiv.innerHTML = `
+                <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+                <div class="message-content">${escapeHtml(content)}</div>
+            `;
+            chatContainer.appendChild(msgDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function addLoading() {
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message bot';
+            loadingDiv.id = 'loading-' + Date.now();
+            loadingDiv.innerHTML = `
+                <div class="avatar">🤖</div>
+                <div class="loading">
+                    <div></div><div></div><div></div>
+                </div>
+            `;
+            chatContainer.appendChild(loadingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return loadingDiv.id;
+        }
+        
+        function removeLoading(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function showPremium() {
+            document.getElementById('premiumModal').classList.add('active');
+        }
+        
+        function hidePremium() {
+            document.getElementById('premiumModal').classList.remove('active');
+            document.getElementById('codeInput').style.display = 'none';
+        }
+        
+        function showCodeInput() {
+            document.getElementById('codeInput').style.display = 'block';
+        }
+        
+        async function redeemCode() {
+            const code = document.getElementById('premiumCode').value.trim();
+            if (!code) return alert('Inserisci un codice');
+            
+            const form = new FormData();
+            form.append('code', code);
+            
+            const res = await fetch('/upgrade', {method: 'POST', body: form});
+            if (res.ok) {
+                alert('✅ Premium attivato!');
+                location.reload();
+            } else {
+                alert('❌ Codice non valido');
+            }
+        }
+        
+        // Auto-scroll on load
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    </script>
+</body>
+</html>
+"""
+
+# ---------------------------
 # Routes
 # ---------------------------
 @app.route("/")
 def welcome():
-    session.setdefault("lang", get_preferred_lang())
-    # Crea un template welcome.html semplice se non esiste
-    try:
-        return render_template("welcome.html", lang=session.get("lang", "it"))
-    except:
-        # Fallback HTML se il template non esiste
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head><title>EMI SUPER BOT</title></head>
-        <body>
-            <h1>Benvenuto a EMI SUPER BOT</h1>
-            <form action="/login" method="get"><button>Login</button></form>
-            <form action="/register" method="get"><button>Registrati</button></form>
-            <form action="/guest" method="post"><button>Entra come Ospite</button></form>
-        </body>
-        </html>
-        '''
+    return render_template_string(WELCOME_HTML)
 
 @app.route("/guest", methods=["POST"])
 def guest():
@@ -238,7 +888,6 @@ def guest():
         uname = "guest_" + secrets.token_hex(4)
         session["username"] = uname
         session["is_guest"] = True
-        session.setdefault("lang", get_preferred_lang())
         return redirect(url_for("home"))
     except Exception as e:
         app.logger.error(f"Guest error: {e}")
@@ -259,7 +908,6 @@ def register():
                 flash("Username già esistente")
                 return redirect(url_for("register"))
 
-            # Crea nuovo utente con struttura completa
             USERS[uname] = {
                 "password_hash": bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode(),
                 "premium": False,
@@ -275,27 +923,10 @@ def register():
             return redirect(url_for("home"))
         except Exception as e:
             app.logger.error(f"Register error: {e}")
-            return jsonify({"error": f"Errore registrazione: {str(e)}"}), 500
+            flash(f"Errore: {str(e)}")
+            return redirect(url_for("register"))
 
-    # GET - mostra form o fallback HTML
-    try:
-        return render_template("auth.html", title="Registrazione", button="Crea account")
-    except:
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head><title>Registrazione</title></head>
-        <body>
-            <h1>Registrazione</h1>
-            <form method="post">
-                <input type="text" name="username" placeholder="Username" required><br>
-                <input type="password" name="password" placeholder="Password" required><br>
-                <button type="submit">Crea account</button>
-            </form>
-            <a href="/">Torna indietro</a>
-        </body>
-        </html>
-        '''
+    return render_template_string(AUTH_HTML, title="Registrazione", button="Crea account")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -326,27 +957,10 @@ def login():
             return redirect(url_for("login"))
         except Exception as e:
             app.logger.error(f"Login error: {e}")
-            return jsonify({"error": f"Errore login: {str(e)}"}), 500
+            flash(f"Errore: {str(e)}")
+            return redirect(url_for("login"))
 
-    # GET - mostra form o fallback HTML
-    try:
-        return render_template("auth.html", title="Login", button="Accedi")
-    except:
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head><title>Login</title></head>
-        <body>
-            <h1>Login</h1>
-            <form method="post">
-                <input type="text" name="username" placeholder="Username" required><br>
-                <input type="password" name="password" placeholder="Password" required><br>
-                <button type="submit">Accedi</button>
-            </form>
-            <a href="/">Torna indietro</a>
-        </body>
-        </html>
-        '''
+    return render_template_string(AUTH_HTML, title="Login", button="Accedi")
 
 @app.route("/logout")
 def logout():
@@ -370,43 +984,18 @@ def home():
             history = [{"role": m.get("role", "user"), "content": m.get("content", "")} 
                        for m in u.get("history", [])[-(max_items*2):]]
         
-        # Fallback HTML se template non esiste
-        try:
-            return render_template("home.html",
+        return render_template_string(CHAT_HTML,
                                    username=(uname if not is_guest else "Ospite"),
                                    plan=plan,
                                    premium=(u.get("premium") if u else False),
-                                   created_at=(u.get("created_at") if u else ""),
                                    buy_link=BUY_LINK,
                                    history=history,
                                    free_limit=FREE_DAILY_LIMIT,
                                    used_today=used,
-                                   lang=session.get("lang", "it"),
                                    is_guest=is_guest)
-        except Exception as template_error:
-            app.logger.error(f"Template error: {template_error}")
-            # HTML fallback semplice
-            history_html = "".join([f"<p><b>{h['role']}:</b> {h['content']}</p>" for h in history])
-            return f'''
-            <!DOCTYPE html>
-            <html>
-            <head><title>EMI SUPER BOT - Home</title></head>
-            <body>
-                <h1>Ciao {uname}!</h1>
-                <p>Piano: {plan} | Messaggi oggi: {used}/{FREE_DAILY_LIMIT}</p>
-                <form action="/chat" method="post">
-                    <textarea name="message" placeholder="Scrivi un messaggio..." required></textarea><br>
-                    <button type="submit">Invia</button>
-                </form>
-                <h2>Cronologia:</h2>
-                {history_html}
-                <a href="/logout">Logout</a>
-            </body>
-            </html>
-            '''
     except Exception as e:
         app.logger.error(f"Home error: {e}")
-        return jsonify({"error": f"Errore caricamento home: {str(e)}"}), 500
+        return jsonify({"error": f"Errore: {str(e)}"}), 500
 
 @app.route("/chat", methods=["POST"])
 @login_required
@@ -416,21 +1005,24 @@ def chat():
         is_guest = session.get("is_guest", False)
         u = USERS.get(uname) if not is_guest else None
 
-        data = request.get_json() or {}
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Richiesta non valida"}), 400
+            
         message = (data.get("message") or "").strip()
         if not message:
             return jsonify({"error": "Messaggio vuoto"}), 400
 
-        # Controllo limite giornaliero per utenti free
+        # Controllo limite giornaliero
         if (not is_guest) and u and (not u.get("premium")):
             count = increment_daily(u)
             if count > FREE_DAILY_LIMIT:
-                return jsonify({"error": "Limite giornaliero raggiunto. Passa a premium."}), 429
+                return jsonify({"error": "Limite giornaliero raggiunto. Passa a Premium per messaggi illimitati!"}), 429
 
         # Prepara cronologia
         max_pairs = HISTORY_PREMIUM if (u and u.get("premium")) else HISTORY_FREE
         recent = (u.get("history", []) if u else [])[-(max_pairs*2):]
-        ctx = [{"role": "system", "content": "Sei EMI SUPER BOT. Rispondi nella stessa lingua dell'utente in modo amichevole e professionale."}]
+        ctx = [{"role": "system", "content": "Sei EMI SUPER BOT, un assistente AI amichevole e professionale. Rispondi nella stessa lingua dell'utente in modo chiaro e utile."}]
         
         for m in recent:
             if m.get("role") and m.get("content"):
@@ -452,9 +1044,9 @@ def chat():
                 ai_text = resp.choices[0].message.content
             except Exception as exc:
                 app.logger.error(f"Model API error: {exc}")
-                ai_text = "Mi dispiace, si è verificato un errore con il modello AI. Riprova più tardi."
+                ai_text = "Mi dispiace, si è verificato un errore temporaneo. Riprova tra poco."
         else:
-            ai_text = f"Ciao! Ho ricevuto il tuo messaggio: '{message[:100]}'. (Nota: API Groq non configurata, questa è una risposta simulata)"
+            ai_text = f"Ciao! Ho ricevuto il tuo messaggio: '{message[:100]}...' \n\n(Nota: L'API Groq non è configurata. Questa è una risposta di esempio. Per usare l'AI vera, configura GROQ_API_KEY nelle variabili d'ambiente.)"
 
         # Salva cronologia (non per ospiti)
         if not is_guest and u:
@@ -475,192 +1067,6 @@ def chat():
     except Exception as e:
         app.logger.error(f"Chat error: {e}")
         return jsonify({"error": f"Errore durante la chat: {str(e)}"}), 500
-
-# Upload
-ALLOWED_IMG = {"png", "jpg", "jpeg", "gif", "svg", "webp"}
-ALLOWED_VIDEO = {"mp4", "webm", "mov", "ogg"}
-
-def allowed_file(filename, allowed_set):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_set
-
-@app.route("/upload", methods=["POST"])
-@login_required
-def upload():
-    try:
-        if "file" not in request.files:
-            return jsonify({"error": "Nessun file"}), 400
-        
-        f = request.files["file"]
-        if f.filename == "":
-            return jsonify({"error": "File non selezionato"}), 400
-        
-        filename = f.filename
-        ext = filename.rsplit(".", 1)[1].lower() if "." in filename else ""
-        
-        if allowed_file(filename, ALLOWED_IMG.union(ALLOWED_VIDEO)):
-            safe_name = secrets.token_hex(8) + "." + ext
-            dest = os.path.join(STATIC_UPLOADS, safe_name)
-            f.save(dest)
-            url = url_for("static", filename=f"uploads/{safe_name}", _external=True)
-            
-            uname = session.get("username")
-            is_guest = session.get("is_guest", False)
-            if not is_guest:
-                u = USERS.get(uname)
-                if u:
-                    if "history" not in u:
-                        u["history"] = []
-                    u["history"].append({
-                        "role": "user", 
-                        "content": f"[file caricato] {url}", 
-                        "ts": time.time()
-                    })
-                    persist_users_and_codes()
-            
-            return jsonify({"ok": True, "url": url})
-        else:
-            return jsonify({"error": "Tipo di file non consentito"}), 400
-    except Exception as e:
-        app.logger.error(f"Upload error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/generate-image", methods=["POST"])
-@login_required
-def generate_image():
-    try:
-        data = request.get_json() or {}
-        prompt = (data.get("prompt") or "abstract").strip()[:200]
-        color = data.get("color") or ("#" + secrets.token_hex(3))
-        
-        svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
-  <rect width="100%" height="100%" fill="{color}"/>
-  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-    font-family="Arial" font-size="48" fill="#ffffff">{prompt[:40]}</text>
-</svg>'''
-        
-        fname = f"gen_{int(time.time())}_{secrets.token_hex(4)}.svg"
-        path = os.path.join(STATIC_GENERATED, fname)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(svg)
-        
-        url = url_for("static", filename=f"generated/{fname}", _external=True)
-        
-        uname = session.get("username")
-        if not session.get("is_guest", False):
-            u = USERS.get(uname)
-            if u:
-                if "history" not in u:
-                    u["history"] = []
-                u["history"].append({
-                    "role": "assistant", 
-                    "content": f"[immagine generata] {url}", 
-                    "ts": time.time()
-                })
-                persist_users_and_codes()
-        
-        return jsonify({"ok": True, "url": url})
-    except Exception as e:
-        app.logger.error(f"Generate image error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-# Admin routes
-@app.route("/admin")
-@admin_required
-def admin():
-    try:
-        uv = {}
-        for k, v in USERS.items():
-            uv[k] = {
-                "premium": v.get("premium", False), 
-                "is_admin": v.get("is_admin", False), 
-                "created_at": v.get("created_at", "N/A")
-            }
-        
-        try:
-            return render_template("admin.html", 
-                                   users=uv, 
-                                   codes=sorted(list(VALID_PREMIUM_CODES)), 
-                                   used=USED_PREMIUM_CODES)
-        except:
-            # Fallback HTML
-            users_html = "".join([f"<li>{k}: Premium={v['premium']}, Admin={v['is_admin']}</li>" for k, v in uv.items()])
-            codes_html = "".join([f"<li>{c}</li>" for c in sorted(list(VALID_PREMIUM_CODES))])
-            return f'''
-            <!DOCTYPE html>
-            <html>
-            <head><title>Admin Panel</title></head>
-            <body>
-                <h1>Admin Panel</h1>
-                <h2>Utenti:</h2>
-                <ul>{users_html}</ul>
-                <h2>Codici Premium:</h2>
-                <ul>{codes_html}</ul>
-                <form action="/admin/generate_codes" method="post">
-                    <input type="number" name="n" value="3" min="1" max="200">
-                    <button>Genera Codici</button>
-                </form>
-                <a href="/home">Home</a>
-            </body>
-            </html>
-            '''
-    except Exception as e:
-        app.logger.error(f"Admin error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin/generate_codes", methods=["POST"])
-@admin_required
-def admin_generate_codes():
-    try:
-        n = int(request.form.get("n", "3"))
-        n = max(1, min(n, 200))
-        created = []
-        for _ in range(n):
-            code = secrets.token_hex(6)
-            VALID_PREMIUM_CODES.add(code)
-            created.append(code)
-        persist_users_and_codes()
-        return jsonify({"created": created})
-    except Exception as e:
-        app.logger.error(f"Generate codes error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin/toggle_premium/<username>", methods=["POST"])
-@admin_required
-def admin_toggle_premium(username):
-    try:
-        if username not in USERS:
-            return "Utente non trovato", 400
-        USERS[username]["premium"] = not USERS[username].get("premium", False)
-        persist_users_and_codes()
-        return redirect(url_for("admin"))
-    except Exception as e:
-        app.logger.error(f"Toggle premium error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin/delete_user/<username>", methods=["POST"])
-@admin_required
-def admin_delete_user(username):
-    try:
-        if username in USERS:
-            del USERS[username]
-            persist_users_and_codes()
-        return redirect(url_for("admin"))
-    except Exception as e:
-        app.logger.error(f"Delete user error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin/revoke_code", methods=["POST"])
-@admin_required
-def admin_revoke_code():
-    try:
-        code = request.form.get("code")
-        if code in VALID_PREMIUM_CODES:
-            VALID_PREMIUM_CODES.remove(code)
-            persist_users_and_codes()
-        return redirect(url_for("admin"))
-    except Exception as e:
-        app.logger.error(f"Revoke code error: {e}")
-        return jsonify({"error": str(e)}), 500
 
 @app.route("/upgrade", methods=["POST"])
 @login_required
@@ -686,56 +1092,214 @@ def upgrade():
         if u:
             u["premium"] = True
             persist_users_and_codes()
-            flash("Aggiornato a premium! Grazie!")
+            flash("✅ Premium attivato con successo!")
         
         return redirect(url_for("home"))
     except Exception as e:
         app.logger.error(f"Upgrade error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/webhook/gumroad", methods=["POST"])
-def gumroad_webhook():
+@app.route("/admin")
+@admin_required
+def admin():
     try:
-        payload = request.get_data()
-        sig = request.headers.get("X-Gumroad-Signature") or request.headers.get("x-gumroad-signature")
+        uv = {}
+        for k, v in USERS.items():
+            uv[k] = {
+                "premium": v.get("premium", False), 
+                "is_admin": v.get("is_admin", False), 
+                "created_at": v.get("created_at", "N/A"),
+                "message_count": user_message_count(v)
+            }
         
-        if GUMROAD_SECRET:
-            computed = hmac_new(GUMROAD_SECRET.encode(), payload, sha1).hexdigest()
-            if computed != sig:
-                return "Firma non valida", 403
+        admin_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Admin Panel</title>
+            <style>
+                body {{ font-family: Arial; padding: 2rem; background: #f5f5f5; }}
+                .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 2rem; border-radius: 8px; }}
+                h1 {{ color: #333; }}
+                table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
+                th, td {{ padding: 1rem; text-align: left; border-bottom: 1px solid #ddd; }}
+                th {{ background: #667eea; color: white; }}
+                button {{ padding: 0.5rem 1rem; margin: 0.25rem; border: none; border-radius: 4px; cursor: pointer; }}
+                .btn-primary {{ background: #667eea; color: white; }}
+                .btn-danger {{ background: #e74c3c; color: white; }}
+                .badge {{ padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.85rem; }}
+                .badge-premium {{ background: #ffd700; color: #000; }}
+                .badge-free {{ background: #ccc; color: #333; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🔧 Admin Panel</h1>
+                <h2>Genera Codici Premium</h2>
+                <form action="/admin/generate_codes" method="post">
+                    <input type="number" name="n" value="5" min="1" max="100" style="padding: 0.5rem; margin-right: 0.5rem;">
+                    <button type="submit" class="btn-primary">Genera Codici</button>
+                </form>
+                
+                <h2>Utenti Registrati</h2>
+                <table>
+                    <tr>
+                        <th>Username</th>
+                        <th>Piano</th>
+                        <th>Admin</th>
+                        <th>Messaggi Oggi</th>
+                        <th>Registrato</th>
+                        <th>Azioni</th>
+                    </tr>
+        """
         
-        code = secrets.token_hex(6)
-        VALID_PREMIUM_CODES.add(code)
-        persist_users_and_codes()
-        return jsonify({"ok": True, "code": code})
+        for k, v in uv.items():
+            premium_badge = '<span class="badge badge-premium">PREMIUM</span>' if v['premium'] else '<span class="badge badge-free">FREE</span>'
+            admin_badge = '✅' if v['is_admin'] else '❌'
+            admin_html += f"""
+                    <tr>
+                        <td><strong>{k}</strong></td>
+                        <td>{premium_badge}</td>
+                        <td>{admin_badge}</td>
+                        <td>{v['message_count']}</td>
+                        <td>{v['created_at'][:10] if len(v['created_at']) > 10 else v['created_at']}</td>
+                        <td>
+                            <form action="/admin/toggle_premium/{k}" method="post" style="display:inline;">
+                                <button type="submit" class="btn-primary">Toggle Premium</button>
+                            </form>
+                            <form action="/admin/delete_user/{k}" method="post" style="display:inline;" onsubmit="return confirm('Eliminare {k}?')">
+                                <button type="submit" class="btn-danger">Elimina</button>
+                            </form>
+                        </td>
+                    </tr>
+            """
+        
+        admin_html += """
+                </table>
+                
+                <h2>Codici Premium Validi</h2>
+                <ul>
+        """
+        
+        for code in sorted(list(VALID_PREMIUM_CODES)):
+            admin_html += f"""
+                <li>
+                    <code style="background:#f0f0f0;padding:0.5rem;border-radius:4px;font-family:monospace;">{code}</code>
+                    <form action="/admin/revoke_code" method="post" style="display:inline;">
+                        <input type="hidden" name="code" value="{code}">
+                        <button type="submit" class="btn-danger" style="margin-left:1rem;">Revoca</button>
+                    </form>
+                </li>
+            """
+        
+        admin_html += f"""
+                </ul>
+                <p><strong>Codici usati:</strong> {len(USED_PREMIUM_CODES)}</p>
+                <a href="/home"><button class="btn-primary">← Torna alla Chat</button></a>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return admin_html
     except Exception as e:
-        app.logger.error(f"Webhook error: {e}")
+        app.logger.error(f"Admin error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/admin/generate_codes", methods=["POST"])
+@admin_required
+def admin_generate_codes():
+    try:
+        n = int(request.form.get("n", "5"))
+        n = max(1, min(n, 100))
+        created = []
+        for _ in range(n):
+            code = secrets.token_hex(6)
+            VALID_PREMIUM_CODES.add(code)
+            created.append(code)
+        persist_users_and_codes()
+        flash(f"✅ Generati {n} codici premium!")
+        return redirect(url_for("admin"))
+    except Exception as e:
+        app.logger.error(f"Generate codes error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/admin/toggle_premium/<username>", methods=["POST"])
+@admin_required
+def admin_toggle_premium(username):
+    try:
+        if username not in USERS:
+            flash("Utente non trovato")
+            return redirect(url_for("admin"))
+        USERS[username]["premium"] = not USERS[username].get("premium", False)
+        persist_users_and_codes()
+        flash(f"✅ Premium toggled per {username}")
+        return redirect(url_for("admin"))
+    except Exception as e:
+        app.logger.error(f"Toggle premium error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/admin/delete_user/<username>", methods=["POST"])
+@admin_required
+def admin_delete_user(username):
+    try:
+        if username in USERS:
+            del USERS[username]
+            persist_users_and_codes()
+            flash(f"✅ Utente {username} eliminato")
+        return redirect(url_for("admin"))
+    except Exception as e:
+        app.logger.error(f"Delete user error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/admin/revoke_code", methods=["POST"])
+@admin_required
+def admin_revoke_code():
+    try:
+        code = request.form.get("code")
+        if code in VALID_PREMIUM_CODES:
+            VALID_PREMIUM_CODES.remove(code)
+            persist_users_and_codes()
+            flash(f"✅ Codice {code} revocato")
+        return redirect(url_for("admin"))
+    except Exception as e:
+        app.logger.error(f"Revoke code error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "ts": time.time(), "groq": client is not None})
+    return jsonify({
+        "status": "ok", 
+        "ts": time.time(), 
+        "groq": client is not None,
+        "users": len(USERS),
+        "codes": len(VALID_PREMIUM_CODES)
+    })
 
 @app.errorhandler(500)
 def internal_error(e):
-    app.logger.exception("Errore interno del server:")
-    return jsonify({"error": "Errore interno del server", "details": str(e)}), 500
+    app.logger.exception("Errore interno:")
+    return jsonify({"error": "Errore interno del server"}), 500
 
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Pagina non trovata"}), 404
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    app.logger.exception("Eccezione non gestita:")
-    return jsonify({"error": "Si è verificato un errore", "details": str(e)}), 500
-
 if __name__ == "__main__":
     try:
         persist_users_and_codes()
-        print(f"✅ Server avviato su http://0.0.0.0:{PORT}")
-        print(f"✅ Groq API: {'Configurata' if client else 'Non disponibile'}")
-        print(f"✅ Utenti demo: admin, utente1, premiumtester")
+        print("="*50)
+        print("🚀 EMI SUPER BOT - Server Avviato!")
+        print("="*50)
+        print(f"📍 URL: http://0.0.0.0:{PORT}")
+        print(f"🤖 Groq API: {'✅ Configurata' if client else '❌ Non disponibile'}")
+        print(f"👥 Utenti: {len(USERS)}")
+        print(f"🎟️  Codici Premium: {len(VALID_PREMIUM_CODES)}")
+        print("="*50)
+        print("📝 Account Demo:")
+        print("   Username: admin")
+        print("   Password: admin123")
+        print("="*50)
         app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
     except Exception as e:
         print(f"❌ Errore avvio: {e}")
