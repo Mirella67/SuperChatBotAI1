@@ -60,6 +60,11 @@ if Groq and GROQ_API_KEY:
 else:
     client = None
 
+@app.route("/welcome")
+def welcome():
+    return render_template("welcome.html")
+
+
 # Ensure static folders exist
 os.makedirs(STATIC_UPLOADS, exist_ok=True)
 os.makedirs(STATIC_GENERATED, exist_ok=True)
@@ -594,4 +599,5 @@ if __name__ == "__main__":
     # ensure DATA reflects current USERS and codes before run
     persist_users_and_codes()
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
+
 
