@@ -1,78 +1,102 @@
 {% extends "base.html" %}
 {% block content %}
 <div style="display:flex;gap:16px;flex-wrap:wrap">
-  <div style="flex:1;min-width:320px">
-    <div style="background:rgba(255,255,255,0.02);padding:16px;border-radius:12px;">
-      <h2>EMI SUPER BOT</h2>
-      <div id="messages" style="height:420px;overflow:auto;background:#061026;padding:12px;border-radius:8px;">
-        {% for m in history %}
-          <div style="margin:6px 0;padding:8px;border-radius:8px;background:{{ '#0ea5a4' if m.role=='user' else 'rgba(255,255,255,0.04)' }};">
-            {{ m.content }}
-          </div>
-        {% endfor %}
-      </div>
+  <div style="flex:1;min-width:320px;background:#071025;padding:16px;border-radius:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><strong>EMI SUPER BOT</strong><div class="small">Assistente intelligente</div></div>
+      <div class="small">Plan: <strong>{{ plan|upper }}</strong></div>
+    </div>
 
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <textarea id="prompt" style="flex:1;min-height:60px"></textarea>
-        <button id="sendBtn">Invia</button>
-      </div>
+    <div id="messages" style="height:420px;overflow:auto;margin-top:12px;padding:8px;background:#061229;border-radius:8px"></div>
 
-      <div style="margin-top:8px;color:#94a3b8">Plan: <strong>{{ plan }}</strong> — Free daily limit: {{ free_limit }} — Used today: {{ used_today }}</div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <textarea id="prompt" placeholder="Scrivi..." style="flex:1;padding:8px;border-radius:6px"></textarea>
+      <button id="sendBtn" class="install">Invia</button>
+    </div>
+
+    <div style="margin-top:8px">
+      <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="file" id="uploadFile" accept="image/*,video/*">
+        <button type="button" id="uploadBtn">Upload</button>
+        &nbsp;<span class="small">Upload images/video to attach</span>
+      </form>
     </div>
   </div>
 
-  <div style="width:320px">
-    <div style="background:rgba(255,255,255,0.02);padding:16px;border-radius:12px;">
-      <h3>Account</h3>
-      <div>{{ username or 'Ospite' }}</div>
-      <div>Tipo: <strong>{{ plan }}</strong></div>
-      <div>Creato: {{ created_at }}</div>
+  <div style="width:320px;background:#071025;padding:16px;border-radius:12px">
+    <div><strong>Account</strong></div>
+    <div class="small">User: {{ username or 'Guest' }}</div>
+    <div class="small">Created: {{ created_at }}</div>
+    <div style="margin-top:12px">
       {% if not premium %}
-        <form action="{{ url_for('upgrade') }}" method="post"><input name="code" placeholder="Codice premium"><button>Usa codice</button></form>
-        <button onclick="window.open('{{ buy_link }}','_blank')">Compra Premium</button>
+        <form action="{{ url_for('upgrade') }}" method="post">
+          <input name="code" placeholder="Codice premium">
+          <button type="submit">Usa codice</button>
+        </form>
+        <div style="margin-top:8px">
+          <a href="{{ buy_link }}" target="_blank"><button class="install">Compra Premium</button></a>
+        </div>
+      {% else %}
+        <div class="small">Sei Premium — grazie! 💎</div>
       {% endif %}
-      <form action="{{ url_for('clear_history') }}" method="post" style="margin-top:8px;"><button>Pulisci cronologia</button></form>
-      <div style="margin-top:12px"><a href="{{ url_for('admin') }}">Admin Panel</a></div>
+    </div>
+    <div style="margin-top:12px">
+      <form action="{{ url_for('clear_history') }}" method="post"><button type="submit">Pulisci cronologia</button></form>
+    </div>
+    <div style="margin-top:12px">
+      <a href="{{ url_for('admin') }}">Admin Panel</a>
     </div>
   </div>
 </div>
 
 <script>
 const sendBtn = document.getElementById('sendBtn');
-const prompt = document.getElementById('prompt');
+const promptEl = document.getElementById('prompt');
 const messagesEl = document.getElementById('messages');
 
 function appendMessage(text, who){
-  const d = document.createElement('div');
-  d.style.margin='6px 0'; d.style.padding='8px'; d.style.borderRadius='8px';
-  if(who==='user'){ d.style.background='#0ea5a4'; } else { d.style.background='rgba(255,255,255,0.04)'; }
-  d.textContent = text;
-  messagesEl.appendChild(d);
+  const el = document.createElement('div');
+  el.style.margin = '6px 0';
+  el.style.padding = '8px';
+  el.style.borderRadius = '8px';
+  el.style.maxWidth = '80%';
+  el.textContent = text;
+  if (who === 'user') {
+    el.style.background = 'linear-gradient(90deg,#0ea5a4,#06b6d4)';
+    el.style.alignSelf = 'flex-end';
+    el.style.marginLeft = 'auto';
+  } else {
+    el.style.background = 'rgba(255,255,255,0.04)';
+  }
+  messagesEl.appendChild(el);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 sendBtn.addEventListener('click', async ()=>{
-  const txt = prompt.value.trim();
+  const txt = promptEl.value.trim();
   if(!txt) return;
   appendMessage(txt,'user');
-  prompt.value = '';
-  const typing = document.createElement('div');
-  typing.style.padding='8px'; typing.style.borderRadius='8px'; typing.style.background='rgba(255,255,255,0.04)';
-  typing.textContent = 'EMI sta scrivendo…';
-  messagesEl.appendChild(typing);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-
+  promptEl.value='';
   const res = await fetch('/chat', {
-    method:'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({message: txt})
+    method:'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: txt})
   });
   const data = await res.json();
-  messagesEl.removeChild(typing);
-  if(data.error){
-    appendMessage("Errore: "+data.error,'bot');
+  if(data.error) appendMessage("Errore: "+data.error,'bot');
+  else appendMessage(data.reply,'bot');
+});
+
+// Upload
+document.getElementById('uploadBtn').addEventListener('click', async ()=>{
+  const f = document.getElementById('uploadFile').files[0];
+  if(!f) return alert('Select a file');
+  const form = new FormData();
+  form.append('file', f);
+  const res = await fetch('/upload', { method:'POST', body: form });
+  const data = await res.json();
+  if(data.ok){
+    appendMessage('Uploaded: ' + data.url, 'user');
   } else {
-    appendMessage(data.reply,'bot');
+    appendMessage('Upload error: ' + (data.error||'unknown'),'bot');
   }
 });
 </script>
