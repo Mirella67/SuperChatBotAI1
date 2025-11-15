@@ -1,90 +1,79 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+  <div style="flex:1;min-width:320px">
+    <div style="background:rgba(255,255,255,0.02);padding:16px;border-radius:12px;">
+      <h2>EMI SUPER BOT</h2>
+      <div id="messages" style="height:420px;overflow:auto;background:#061026;padding:12px;border-radius:8px;">
+        {% for m in history %}
+          <div style="margin:6px 0;padding:8px;border-radius:8px;background:{{ '#0ea5a4' if m.role=='user' else 'rgba(255,255,255,0.04)' }};">
+            {{ m.content }}
+          </div>
+        {% endfor %}
+      </div>
 
-    <!-- Manifest PWA -->
-    <link rel="manifest" href="/manifest.json" />
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <textarea id="prompt" style="flex:1;min-height:60px"></textarea>
+        <button id="sendBtn">Invia</button>
+      </div>
 
-    <!-- Theme color -->
-    <meta name="theme-color" content="#667eea" />
-
-    <!-- iOS PWA settings -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="apple-touch-icon" href="/icon-512.css" />
-
-    <title>SuperBot</title>
-
-    <!-- Icona CSS (simula immagine 512x512) -->
-    <style>
-        .app-icon {
-            width: 512px;
-            height: 512px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 20%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 150px;
-            font-weight: bold;
-            margin: auto;
-        }
-        #installBtn {
-            display: none;
-            padding: 12px 20px;
-            background:#667eea;
-            color:#fff;
-            border:none;
-            border-radius:10px;
-            margin:20px auto;
-            display:block;
-            font-size:18px;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>SuperBot</h1>
-
-    <!-- Bottone installazione PWA -->
-    <button id="installBtn">Install App</button>
-
-    <!-- Interfaccia chat -->
-    <div id="chatbox" 
-        style="width:90%;margin:20px auto;padding:15px;border:1px solid #ccc;border-radius:10px;min-height:300px;">
-        <p><i>Inizia a chattare…</i></p>
+      <div style="margin-top:8px;color:#94a3b8">Plan: <strong>{{ plan }}</strong> — Free daily limit: {{ free_limit }} — Used today: {{ used_today }}</div>
     </div>
+  </div>
 
-    <form method="POST" action="/chat" style="text-align:center;">
-        <input type="text" name="message" placeholder="Scrivi..." style="width:70%;padding:10px;">
-        <button type="submit">Invia</button>
-    </form>
+  <div style="width:320px">
+    <div style="background:rgba(255,255,255,0.02);padding:16px;border-radius:12px;">
+      <h3>Account</h3>
+      <div>{{ username or 'Ospite' }}</div>
+      <div>Tipo: <strong>{{ plan }}</strong></div>
+      <div>Creato: {{ created_at }}</div>
+      {% if not premium %}
+        <form action="{{ url_for('upgrade') }}" method="post"><input name="code" placeholder="Codice premium"><button>Usa codice</button></form>
+        <button onclick="window.open('{{ buy_link }}','_blank')">Compra Premium</button>
+      {% endif %}
+      <form action="{{ url_for('clear_history') }}" method="post" style="margin-top:8px;"><button>Pulisci cronologia</button></form>
+      <div style="margin-top:12px"><a href="{{ url_for('admin') }}">Admin Panel</a></div>
+    </div>
+  </div>
+</div>
 
-    <script>
-        // Service Worker
-        if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("/service-worker.js");
-        }
+<script>
+const sendBtn = document.getElementById('sendBtn');
+const prompt = document.getElementById('prompt');
+const messagesEl = document.getElementById('messages');
 
-        // Install prompt
-        let deferredPrompt;
-        const installBtn = document.getElementById("installBtn");
+function appendMessage(text, who){
+  const d = document.createElement('div');
+  d.style.margin='6px 0'; d.style.padding='8px'; d.style.borderRadius='8px';
+  if(who==='user'){ d.style.background='#0ea5a4'; } else { d.style.background='rgba(255,255,255,0.04)'; }
+  d.textContent = text;
+  messagesEl.appendChild(d);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
 
-        window.addEventListener("beforeinstallprompt", (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installBtn.style.display = "block";
-        });
+sendBtn.addEventListener('click', async ()=>{
+  const txt = prompt.value.trim();
+  if(!txt) return;
+  appendMessage(txt,'user');
+  prompt.value = '';
+  const typing = document.createElement('div');
+  typing.style.padding='8px'; typing.style.borderRadius='8px'; typing.style.background='rgba(255,255,255,0.04)';
+  typing.textContent = 'EMI sta scrivendo…';
+  messagesEl.appendChild(typing);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 
-        installBtn.addEventListener("click", async () => {
-            installBtn.style.display = "none";
-            deferredPrompt.prompt();
-            await deferredPrompt.userChoice;
-            deferredPrompt = null;
-        });
-    </script>
-</body>
-</html>
+  const res = await fetch('/chat', {
+    method:'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({message: txt})
+  });
+  const data = await res.json();
+  messagesEl.removeChild(typing);
+  if(data.error){
+    appendMessage("Errore: "+data.error,'bot');
+  } else {
+    appendMessage(data.reply,'bot');
+  }
+});
+</script>
+{% endblock %}
