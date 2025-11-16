@@ -690,12 +690,17 @@ CHAT_HTML = """
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            font-size: 1.3rem;
             transition: background 0.2s;
             flex-shrink: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
         .attach-btn:hover {
             background: rgba(255,255,255,0.1);
+        }
+        .attach-btn:active {
+            transform: scale(0.95);
         }
         #sendBtn {
             position: absolute;
@@ -1007,12 +1012,15 @@ CHAT_HTML = """
             <div class="input-container">
                 <div class="file-preview" id="filePreview"></div>
                 <div class="input-wrapper">
-                    <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Attach file">
-                        📎
+                    <button type="button" class="attach-btn" onclick="handleAttachClick()" title="Attach images or videos">
+                        📷
                     </button>
-                    <input type="file" id="fileInput" accept="image/*,video/*" multiple onchange="handleFileSelect(event)">
+                    <button type="button" class="attach-btn" onclick="handleGenerateClick()" title="Generate image with AI">
+                        🎨
+                    </button>
+                    <input type="file" id="fileInput" accept="image/*,video/*" multiple style="display:none;">
                     <textarea id="messageInput" placeholder="Message EMI SUPER BOT..." rows="1"></textarea>
-                    <button id="sendBtn" onclick="sendMessage()">▲</button>
+                    <button type="button" id="sendBtn">▲</button>
                 </div>
             </div>
         </div>
@@ -1041,10 +1049,10 @@ CHAT_HTML = """
                     <li>Early access to new features</li>
                 </ul>
                 <div class="modal-buttons">
-                    <button class="btn-buy" onclick="showPaymentForm()">
+                    <button type="button" class="btn-buy" onclick="showPaymentForm()">
                         Continue to Payment
                     </button>
-                    <button class="btn-code" onclick="showCodeInput()">
+                    <button type="button" class="btn-code" onclick="showCodeInput()">
                         Have a code?
                     </button>
                 </div>
@@ -1071,10 +1079,10 @@ CHAT_HTML = """
                         </p>
                     </div>
                     
-                    <button onclick="processPayment()" style="width:100%;padding:1rem;margin-top:1rem;background:#19c37d;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.2s;">
+                    <button type="button" onclick="processPayment()" style="width:100%;padding:1rem;margin-top:1rem;background:#19c37d;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.2s;">
                         🚀 Subscribe for €15/month
                     </button>
-                    <button onclick="hidePaymentForm()" style="width:100%;padding:0.75rem;margin-top:0.5rem;background:transparent;border:1px solid rgba(255,255,255,0.2);color:#ececf1;border-radius:8px;cursor:pointer;font-size:14px;">
+                    <button type="button" onclick="hidePaymentForm()" style="width:100%;padding:0.75rem;margin-top:0.5rem;background:transparent;border:1px solid rgba(255,255,255,0.2);color:#ececf1;border-radius:8px;cursor:pointer;font-size:14px;">
                         ← Back
                     </button>
                 </div>
@@ -1082,10 +1090,10 @@ CHAT_HTML = """
             
             <div id="codeInput" style="display:none;">
                 <input type="text" id="premiumCode" placeholder="Enter your activation code">
-                <button class="btn-buy" onclick="redeemCode()" style="width:100%">Activate</button>
+                <button type="button" class="btn-buy" onclick="redeemCode()" style="width:100%">Activate</button>
             </div>
             
-            <button class="btn-close" onclick="hidePremium()" style="margin-top:1rem;width:100%">
+            <button type="button" class="btn-close" onclick="hidePremium()" style="margin-top:1rem;width:100%">
                 Cancel
             </button>
         </div>
@@ -1203,42 +1211,61 @@ CHAT_HTML = """
         }
         
         function showPaymentForm() {
+            // Nascondi pricing card
+            document.querySelector('.pricing-card').style.display = 'none';
+            document.getElementById('codeInput').style.display = 'none';
+            // Mostra form pagamento
             document.getElementById('paymentForm').style.display = 'block';
         }
         
         function hidePaymentForm() {
+            // Mostra di nuovo pricing card
+            document.querySelector('.pricing-card').style.display = 'block';
             document.getElementById('paymentForm').style.display = 'none';
         }
         
         function showCodeInput() {
-            document.getElementById('codeInput').style.display = 'block';
+            document.querySelector('.pricing-card').style.display = 'none';
             document.getElementById('paymentForm').style.display = 'none';
+            document.getElementById('codeInput').style.display = 'block';
         }
         
         async function processPayment() {
-            // Simulazione pagamento - In produzione integrerai Stripe
-            alert('🔄 Processing payment...\n\nNote: This is a demo. In production, this will integrate with Stripe for real payments.\n\nFor now, use a premium code or contact support.');
+            const cardNumber = document.getElementById('cardNumber').value.trim();
+            const cardExpiry = document.getElementById('cardExpiry').value.trim();
+            const cardCvc = document.getElementById('cardCvc').value.trim();
+            const cardName = document.getElementById('cardName').value.trim();
             
-            // In produzione, qui faresti la chiamata a Stripe:
-            /*
-            const stripe = Stripe('your_publishable_key');
-            const {error, paymentIntent} = await stripe.confirmCardPayment(clientSecret, {
-                payment_method: {
-                    card: cardElement,
-                    billing_details: { name: cardholderName }
-                }
-            });
-            
-            if (!error) {
-                // Attiva premium sul backend
-                await fetch('/activate-premium', {
-                    method: 'POST',
-                    body: JSON.stringify({paymentIntentId: paymentIntent.id})
-                });
-                alert('✅ Premium activated!');
-                location.reload();
+            // Validazione base
+            if (!cardNumber || !cardExpiry || !cardCvc || !cardName) {
+                alert('❌ Please fill in all payment details');
+                return;
             }
-            */
+            
+            if (cardNumber.replace(/\s/g, '').length < 13) {
+                alert('❌ Invalid card number');
+                return;
+            }
+            
+            // Trova il bottone
+            const btn = document.querySelector('#paymentForm button[onclick*="processPayment"]');
+            if (!btn) return;
+            
+            // Simulazione pagamento con animazione
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Processing...';
+            
+            // Simula chiamata API (2 secondi)
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Successo
+            alert('✅ Payment Successful!\n\n💳 Card charged: €15.00\n🎉 Premium activated!\n\nNote: This is a DEMO. In production, integrate Stripe API.\n\nFor now, use a premium code from the admin panel.');
+            
+            btn.disabled = false;
+            btn.innerHTML = '🚀 Subscribe for €15/month';
+            
+            // Torna alla schermata principale
+            hidePremium();
         }
         
         async function redeemCode() {
