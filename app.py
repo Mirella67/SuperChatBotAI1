@@ -12,6 +12,8 @@ import requests
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, session, render_template_string, redirect, url_for
 import bcrypt
+import threading
+import time
 
 try:
     from groq import Groq
@@ -32,6 +34,22 @@ os.makedirs("static/generated", exist_ok=True)
 app = Flask(__name__)
 app.secret_key = secrets.token_urlsafe(32)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+# KEEP-ALIVE SYSTEM - Mantiene il server sempre attivo
+def keep_alive():
+    """Fa ping al server ogni 5 minuti per mantenerlo sveglio"""
+    while True:
+        try:
+            time.sleep(300)  # 5 minuti
+            # Ping interno per mantenere il server attivo
+            requests.get("http://127.0.0.1:5000/ping", timeout=5)
+            print("✅ Keep-alive ping successful")
+        except Exception as e:
+            print(f"⚠️ Keep-alive ping failed: {e}")
+
+# Avvia keep-alive in background
+keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+keep_alive_thread.start()
 
 # Groq Client
 groq_client = None
@@ -1008,6 +1026,22 @@ LOGIN_HTML = """
 """
 
 # ROUTES
+@app.route("/ping")
+def ping():
+    """Endpoint per keep-alive - mantiene il server sveglio"""
+    return jsonify({"status": "alive", "timestamp": datetime.utcnow().isoformat()})
+
+@app.route("/health")
+def health():
+    """Health check per monitoring"""
+    return jsonify({
+        "status": "healthy",
+        "server": "online",
+        "uptime": "always",
+        "users": len(USERS),
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
 @app.route("/")
 def index():
     if "username" not in session:
@@ -1387,19 +1421,28 @@ if __name__ == "__main__":
     print(f"\n📊 Utenti: {len(USERS)}")
     print(f"💎 Premium: {sum(1 for u in USERS.values() if u.get('premium', False))}")
     print("\n🌐 Server: http://127.0.0.1:5000")
+    print("🔄 Keep-Alive: ATTIVO - Server sempre online!")
     print("\n💡 FUNZIONALITÀ:")
     print("   ✅ Login permanente (30 giorni)")
     print("   ✅ Multilingua automatico")
-    print("   ✅ Data e ora aggiornate")
+    print("   ✅ Data e ora aggiornate (Italia)")
+    print("   ✅ Conoscenze 2025 (Trump presidente, crypto, AI)")
+    print("   ✅ Esperto investimenti e finanza")
     print("   ✅ Chat salvate (nuova chat o chiusura)")
     print("   ✅ Generazione immagini ('genera immagine di...')")
     print("   ✅ Generazione video ('crea video di...')")
     print("   ✅ Analisi foto con Vision AI")
     print("   ✅ Responsive mobile e desktop")
-    print("   ✅ Modalità ospite (no salvataggio)")
+    print("   ✅ Server SEMPRE ATTIVO (no sleep)")
     print("\n📦 Installa: pip install flask groq bcrypt requests")
     print("   Opzionale video reali: pip install replicate")
-    print("   Poi aggiungi REPLICATE_API_KEY nel codice")
+    print("\n🚀 DEPLOYMENT:")
+    print("   Per Render/Railway: Usa Procfile con 'web: python nexus.py'")
+    print("   Per Heroku: Aggiungi requirements.txt")
+    print("   Keep-alive automatico integrato!")
     print("="*60 + "\n")
     
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Avvia server
+    # Per deploy su Render/Railway/Heroku usa:
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=False, host="0.0.0.0", port=port, threaded=True)
