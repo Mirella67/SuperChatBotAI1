@@ -36,7 +36,7 @@ except ImportError:
 # ============================================
 DATA_FILE = "data.json"
 GROQ_KEY = "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"
-GUMROAD_LINK = "https://micheleguerra.gumroad.com/l/emi-premium"
+GUMROAD_LINK = "https://micheleguerra.gumroad.com/l/superchatbot"
 
 # Crea cartelle
 os.makedirs("static/uploads", exist_ok=True)
@@ -1146,3 +1146,4 @@ if __name__ == "__main__":
         port=10000,
         debug=False
     )
+
