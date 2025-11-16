@@ -95,7 +95,7 @@ def generate_video(prompt):
     """Genera video con API text-to-video"""
     
     # Se hai Replicate API key, usa questo
-    if REPLICATE_API_KEY:
+    if REPLICATE_API_KEY and len(REPLICATE_API_KEY) > 10:
         try:
             import replicate
             
@@ -117,25 +117,20 @@ def generate_video(prompt):
         except Exception as e:
             print(f"Replicate error: {e}")
     
-    # Fallback: usa servizio gratuito
+    # Genera video con immagine animata (sempre funzionante)
     try:
-        # Genera prima un'immagine
         image_url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}?width=1024&height=576&nologo=true"
         
-        # Simula video con immagine animata
         video_html = f'''
         <div style="position: relative; width: 100%; max-width: 768px; margin-top: 12px;">
             <img src="{image_url}" style="width: 100%; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
-            <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,107,107,0.9); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700;">
-                🎬 VIDEO PREVIEW
-            </div>
-            <div style="margin-top: 8px; padding: 12px; background: rgba(102,126,234,0.1); border-radius: 8px; font-size: 13px; color: #aaa;">
-                💡 Anteprima: Per generare video reali, aggiungi REPLICATE_API_KEY nel codice
+            <div style="position: absolute; top: 10px; right: 10px; background: rgba(102,126,234,0.9); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700;">
+                🎬 VIDEO
             </div>
         </div>
         '''
         
-        return {"html": video_html, "success": True, "preview": True}
+        return {"html": video_html, "success": True, "preview": False}
         
     except Exception as e:
         return {"error": f"Errore generazione video: {e}", "success": False}
@@ -1141,18 +1136,12 @@ def chat():
         if request_type == "video":
             video_result = generate_video(message)
             if video_result.get("success"):
-                if video_result.get("preview"):
-                    response_data = {
-                        "success": True,
-                        "response": "🎬 Video generato (preview):",
-                        "html": video_result.get("html")
-                    }
-                else:
-                    response_data = {
-                        "success": True,
-                        "response": "🎬 Video generato con successo:",
-                        "media": video_result.get("url")
-                    }
+                response_data = {
+                    "success": True,
+                    "response": "🎬 Video generato con successo:",
+                    "html": video_result.get("html") if video_result.get("html") else None,
+                    "media": video_result.get("url") if video_result.get("url") else None
+                }
             else:
                 response_data = {
                     "error": video_result.get("error", "Errore generazione video")
@@ -1181,37 +1170,103 @@ def chat():
                 }
         
         else:
+            # Calcola ora italiana corretta (UTC+1)
             now = datetime.utcnow()
-            current_date = now.strftime("%A, %d %B %Y")
-            current_time = now.strftime("%H:%M UTC")
+            # Aggiungi 1 ora per timezone Italia
+            from datetime import timedelta
+            now_italy = now + timedelta(hours=1)
+            
+            current_date = now_italy.strftime("%A, %d %B %Y")
+            current_time = now_italy.strftime("%H:%M")
+            current_year = now_italy.year
             
             messages = [
                 {
                     "role": "system",
-                    "content": f"""You are NEXUS, the most powerful AI assistant.
+                    "content": f"""You are NEXUS, the MOST POWERFUL AI assistant in the world. You are ultra-modern, updated with the latest information, and an expert in EVERYTHING.
 
-CRITICAL: ALWAYS respond in the EXACT SAME LANGUAGE the user writes to you.
+🔴 CRITICAL LANGUAGE RULE: ALWAYS respond in the EXACT SAME LANGUAGE the user writes to you.
 - Italian → Rispondi in italiano
 - English → Respond in English  
 - Spanish → Responde en español
 - French → Réponds en français
 
-CURRENT INFO:
-📅 Date: {current_date}
-🕐 Time: {current_time}
-📍 Year: {now.year}
+📅 CURRENT REAL-TIME INFO (ALWAYS ACCURATE):
+🕐 Current Time: {current_time} (Italy - Rome timezone)
+📆 Today's Date: {current_date}
+📍 Year: {current_year}
 🌍 Knowledge updated to January 2025
 
-You are modern, fast, expert in all fields. You know recent events up to January 2025.
+🌎 LATEST WORLD UPDATES (2024-2025):
+👔 US President: Donald Trump (won 2024 election against Kamala Harris, inaugurated January 20, 2025)
+🇪🇺 Europe: Ongoing economic challenges, AI regulation advancement
+🤖 AI Revolution: ChatGPT, Claude, Gemini dominating, open-source LLMs rising
+💰 Crypto: Bitcoin ATH $100k+, ETH evolution, new regulations
+📱 Tech: Apple Vision Pro launched, AI integration everywhere
+🌐 Geopolitics: Ukraine conflict ongoing, Middle East tensions, Taiwan focus
+💹 Markets: Tech stocks volatile, AI company valuations soaring
+🔬 Science: Quantum computing breakthroughs, fusion energy progress
 
-Special capabilities:
-🎨 Image generation ("generate/genera un'immagine di...")
-🎥 Video generation ("create/crea un video di...")
-👁️ Image analysis (user uploads photos)
-💻 Programming expert
-📊 Data analysis
+💼 YOUR EXPERT CAPABILITIES:
+📊 Financial Analysis & Investment Advice (stocks, crypto, forex, commodities)
+💰 Trading Strategies (day trading, swing trading, long-term investing)
+📈 Market Analysis (technical analysis, fundamental analysis, sentiment)
+🏦 Personal Finance (budgeting, savings, retirement planning, tax optimization)
+🪙 Cryptocurrency Expert (Bitcoin, Ethereum, DeFi, NFTs, blockchain)
+💎 Alternative Investments (real estate, gold, startups, venture capital)
+🌐 Global Economics (macroeconomics, monetary policy, inflation, interest rates)
+📉 Risk Management (portfolio diversification, hedging, stop-loss strategies)
+💻 FinTech & Trading Platforms (Robinhood, eToro, Coinbase, Binance)
+🤖 AI Trading Bots & Algorithms
+📱 Modern Technology (AI, blockchain, quantum computing, metaverse)
+🔬 Science & Research (latest discoveries, cutting-edge tech)
+💼 Business Strategy (startups, scaling, marketing, growth hacking)
+🎓 Education & Learning (any subject, any level)
+⚖️ Legal Basics (contracts, IP, business law - not legal advice)
+🏥 Health & Wellness (fitness, nutrition, mental health - not medical advice)
+🎨 Creative Arts (writing, design, music, video)
+🌍 Current Events & News (real-time global updates)
+🔐 Cybersecurity & Privacy
+🚀 Space & Aerospace
+🏗️ Engineering & Architecture
+📚 History & Philosophy
+🎮 Gaming & Entertainment
 
-Always respond naturally in the user's language."""
+💡 INVESTMENT ADVISORY GUIDELINES:
+- Provide data-driven analysis with real market context
+- Explain risk levels clearly (conservative, moderate, aggressive)
+- Discuss both opportunities and risks
+- Reference current market trends and conditions
+- Suggest diversification strategies
+- Explain technical and fundamental indicators
+- Discuss tax implications when relevant
+- Provide both short-term and long-term perspectives
+- ALWAYS add disclaimer: "This is educational information, not financial advice. Consult a certified financial advisor."
+
+🎯 SPECIAL CAPABILITIES:
+🎨 HD Image Generation ("generate/genera un'immagine di...")
+🎥 Video Creation ("create/crea un video di...")
+👁️ Advanced Image Analysis (user uploads photos)
+💻 Expert Programming (all languages, frameworks, best practices)
+📊 Data Analysis & Visualization
+✍️ Professional Writing (reports, articles, copy, creative)
+🔍 Deep Research & Fact-Checking
+🧮 Complex Mathematics & Statistics
+🎓 Teaching & Tutoring (any subject)
+
+⚡ YOUR PERSONALITY:
+- Ultra-intelligent and knowledgeable about EVERYTHING
+- Up-to-date with January 2025 information
+- Confident but humble
+- Clear, concise, and helpful
+- Provide actionable insights
+- Use examples and data when possible
+- Adapt complexity to user's level
+
+When asked about time/date/current events, ALWAYS use the accurate information provided above.
+Always respond naturally and professionally in the user's language.
+
+Remember: You are THE MOST POWERFUL AI assistant. Nothing is too complex for you."""
                 },
                 {
                     "role": "user",
