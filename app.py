@@ -28,7 +28,7 @@ except ImportError:
 # CONFIGURAZIONE
 # ============================================
 GROQ_API_KEY = "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"
-GUMROAD_PRODUCT_URL = "https://micheleguerra.gumroad.com/l/superchatbot"
+GUMROAD_PRODUCT_URL = "https://tuoaccount.gumroad.com/l/nexus-premium"
 DATA_FILE = "nexus_data.json"
 
 os.makedirs("static/uploads", exist_ok=True)
@@ -591,7 +591,18 @@ CHAT_HTML = """
         </div>
         <button class="new-chat" onclick="newChat()">✨ Nuova Chat</button>
         <div class="sidebar-content">
-            <div id="chatHistory"></div>
+            <div id="chatHistory">
+                {% if not is_guest %}
+                <div style="padding: 12px; color: #888; font-size: 13px;">
+                    📚 Cronologia Chat
+                </div>
+                {% else %}
+                <div style="padding: 12px; color: #888; font-size: 13px; text-align: center;">
+                    ⚠️ Modalità Ospite<br>
+                    <span style="font-size: 11px;">Chat non salvate</span>
+                </div>
+                {% endif %}
+            </div>
         </div>
         <div class="user-section">
             <div class="user-info">
@@ -610,7 +621,11 @@ CHAT_HTML = """
             {% if not premium %}
             <button class="upgrade-btn" onclick="showUpgradeModal()">🚀 UPGRADE PREMIUM</button>
             {% endif %}
+            {% if not is_guest %}
             <button class="upgrade-btn logout-btn" onclick="logout()">🚪 Logout</button>
+            {% else %}
+            <button class="upgrade-btn logout-btn" onclick="window.location.href='/login'">🔐 Accedi/Registrati</button>
+            {% endif %}
         </div>
     </div>
 
@@ -714,8 +729,63 @@ CHAT_HTML = """
 
     <script>
         let selectedFile = null;
+        let currentChatId = Date.now();
+        let chatHistory = {{ chat_history|safe }};
+        let isGuest = {{ 'true' if is_guest else 'false' }};
+        
+        // Carica cronologia all'avvio
+        window.addEventListener('DOMContentLoaded', () => {
+            loadChatHistoryUI();
+        });
+
+        function loadChatHistoryUI() {
+            if (isGuest) return;
+            
+            const historyDiv = document.getElementById('chatHistory');
+            if (chatHistory.length === 0) {
+                historyDiv.innerHTML = '<div style="padding: 12px; color: #666; text-align: center; font-size: 13px;">Nessuna chat salvata</div>';
+                return;
+            }
+            
+            let html = '<div style="padding: 12px; color: #888; font-size: 13px; margin-bottom: 8px;">📚 Cronologia Chat</div>';
+            chatHistory.forEach((chat, index) => {
+                const date = new Date(chat.timestamp).toLocaleDateString('it-IT', { 
+                    day: '2-digit', 
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                const preview = chat.messages[0]?.content.substring(0, 40) || 'Chat';
+                html += `
+                    <div class="chat-item" onclick="loadSavedChat(${index})" style="
+                        padding: 12px;
+                        margin-bottom: 8px;
+                        background: rgba(255,255,255,0.05);
+                        border-radius: 10px;
+                        cursor: pointer;
+                        transition: all 0.3s;
+                        border: 1px solid transparent;
+                    ">
+                        <div style="font-size: 11px; color: #888;">${date}</div>
+                        <div style="margin-top: 4px; font-size: 13px; color: #ccc;">${preview}...</div>
+                    </div>
+                `;
+            });
+            historyDiv.innerHTML = html;
+        }
+        
+        function loadSavedChat(index) {
+            const chat = chatHistory[index];
+            const chatDiv = document.getElementById('chat');
+            chatDiv.innerHTML = '';
+            
+            chat.messages.forEach(msg => {
+                addMessageToUI(msg.role, msg.content, msg.media);
+            });
+        }
 
         function newChat() {
+            currentChatId = Date.now();
             document.getElementById('chat').innerHTML = `
                 <div class="welcome">
                     <div class="welcome-icon">🤖</div>
@@ -752,6 +822,8 @@ CHAT_HTML = """
                     formData.append('type', 'vision');
                 } else if (text.toLowerCase().includes('genera') && (text.toLowerCase().includes('immagine') || text.toLowerCase().includes('immagin') || text.toLowerCase().includes('foto') || text.toLowerCase().includes('disegn'))) {
                     formData.append('type', 'image');
+                } else if (text.toLowerCase().includes('generate') && text.toLowerCase().includes('image')) {
+                    formData.append('type', 'image');
                 } else {
                     formData.append('type', 'chat');
                 }
@@ -767,6 +839,12 @@ CHAT_HTML = """
                     addMessageToUI('bot', `❌ ${data.error}`);
                 } else {
                     addMessageToUI('bot', data.response, data.media);
+                    
+                    // Salva chat solo per utenti registrati
+                    if (!isGuest && data.chat_saved) {
+                        chatHistory = data.chat_history || chatHistory;
+                        loadChatHistoryUI();
+                    }
                 }
                 
             } catch (error) {
@@ -810,6 +888,11 @@ CHAT_HTML = """
         });
 
         function showUpgradeModal() {
+            if (isGuest) {
+                alert('⚠️ Registrati per accedere al Premium!');
+                window.location.href = '/login';
+                return;
+            }
             document.getElementById('upgradeModal').classList.add('show');
         }
 
@@ -1047,6 +1130,21 @@ LOGIN_HTML = """
             <div class="tab" onclick="switchTab('register')">Registrati</div>
         </div>
         
+        <div style="text-align: center; margin-bottom: 20px;">
+            <a href="/guest" style="
+                color: #667eea;
+                text-decoration: none;
+                font-size: 14px;
+                font-weight: 600;
+                transition: all 0.3s;
+            ">
+                👤 Oppure continua come Ospite →
+            </a>
+            <div style="font-size: 11px; color: #666; margin-top: 4px;">
+                (Le chat non verranno salvate)
+            </div>
+        </div>
+        
         <div id="message" class="message"></div>
         
         <form id="loginForm" onsubmit="handleLogin(event)">
@@ -1165,11 +1263,29 @@ def index():
     username = session.get("username")
     user = USERS.get(username, {})
     
+    # Carica storico chat
+    chat_history = user.get("chat_history", [])
+    
     return render_template_string(
         CHAT_HTML, 
         username=user.get("username", "User"),
         premium=user.get("premium", False),
-        GUMROAD_PRODUCT_URL=GUMROAD_PRODUCT_URL
+        GUMROAD_PRODUCT_URL=GUMROAD_PRODUCT_URL,
+        chat_history=json.dumps(chat_history)
+    )
+
+@app.route("/guest")
+def guest_mode():
+    """Modalità ospite - nessun salvataggio"""
+    session["username"] = "guest"
+    session["is_guest"] = True
+    return render_template_string(
+        CHAT_HTML, 
+        username="Ospite",
+        premium=False,
+        GUMROAD_PRODUCT_URL=GUMROAD_PRODUCT_URL,
+        chat_history="[]",
+        is_guest=True
     )
 
 @app.route("/login")
@@ -1241,15 +1357,21 @@ def chat():
             return jsonify({"error": "Login richiesto"}), 401
         
         username = session.get("username")
-        user = USERS.get(username)
+        is_guest = session.get("is_guest", False)
         
-        if not user:
-            return jsonify({"error": "Utente non trovato"}), 404
+        # Gli ospiti non possono salvare
+        if is_guest:
+            user = {"premium": False, "chat_count": 0}
+        else:
+            user = USERS.get(username)
+            if not user:
+                return jsonify({"error": "Utente non trovato"}), 404
         
         message = request.form.get("message", "").strip()
         request_type = request.form.get("type", "chat")
         
-        if not user.get("premium", False):
+        # Limiti solo per free (non premium e non ospiti)
+        if not is_guest and not user.get("premium", False):
             today_count = user.get("chat_count", 0)
             if today_count >= 50:
                 return jsonify({
@@ -1257,16 +1379,19 @@ def chat():
                     "upgrade": True
                 })
         
-        user["chat_count"] = user.get("chat_count", 0) + 1
-        save_db()
+        # Incrementa contatore solo per utenti registrati
+        if not is_guest:
+            user["chat_count"] = user.get("chat_count", 0) + 1
+        
+        response_data = {}
         
         if request_type == "image":
             image_url = generate_image(message)
-            return jsonify({
+            response_data = {
                 "success": True,
                 "response": "✨ Ecco l'immagine generata:",
                 "media": image_url
-            })
+            }
         
         elif request_type == "vision" and 'file' in request.files:
             file = request.files['file']
@@ -1277,10 +1402,10 @@ def chat():
                 
                 analysis = analyze_image_vision(filepath, message or "Descrivi questa immagine in dettaglio")
                 
-                return jsonify({
+                response_data = {
                     "success": True,
                     "response": f"👁️ Analisi dell'immagine:\n\n{analysis}"
-                })
+                }
         
         else:
             messages = [
@@ -1313,12 +1438,39 @@ Always respond naturally and helpfully in the user's language."""
             ]
             
             model = "llama-3.3-70b-versatile" if user.get("premium") else "llama-3.1-8b-instant"
-            response = call_groq(messages, model)
+            ai_response = call_groq(messages, model)
             
-            return jsonify({
+            response_data = {
                 "success": True,
-                "response": response
-            })
+                "response": ai_response
+            }
+        
+        # Salva chat solo per utenti registrati (non ospiti)
+        if not is_guest:
+            if "chat_history" not in user:
+                user["chat_history"] = []
+            
+            # Crea o aggiorna la chat corrente
+            current_chat = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "messages": [
+                    {"role": "user", "content": message, "media": None},
+                    {"role": "bot", "content": response_data.get("response", ""), "media": response_data.get("media")}
+                ]
+            }
+            
+            # Aggiungi alla cronologia (max 50 chat)
+            user["chat_history"].insert(0, current_chat)
+            user["chat_history"] = user["chat_history"][:50]
+            
+            save_db()
+            
+            response_data["chat_saved"] = True
+            response_data["chat_history"] = user["chat_history"]
+        else:
+            response_data["chat_saved"] = False
+        
+        return jsonify(response_data)
     
     except Exception as e:
         print(f"Chat error: {e}")
