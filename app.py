@@ -385,6 +385,66 @@ CHAT_HTML = """
             height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* MOBILE RESPONSIVE */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+                z-index: 200;
+            }
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            .main {
+                margin-left: 0;
+            }
+            .mobile-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 199;
+            }
+            .mobile-overlay.active {
+                display: block;
+            }
+            .mobile-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 1rem;
+                background: #343541;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            .mobile-menu-btn {
+                background: transparent;
+                border: none;
+                color: #ececf1;
+                font-size: 1.5rem;
+                cursor: pointer;
+                padding: 0.5rem;
+            }
+            .mobile-title {
+                font-size: 1rem;
+                font-weight: 600;
+                color: #ececf1;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .mobile-header {
+                display: none;
+            }
+            .mobile-overlay {
+                display: none !important;
+            }
         }
         
         /* SIDEBAR */
@@ -774,8 +834,18 @@ CHAT_HTML = """
     </style>
 </head>
 <body>
+    <!-- MOBILE HEADER -->
+    <div class="mobile-header">
+        <button class="mobile-menu-btn" onclick="toggleMobileSidebar()">☰</button>
+        <div class="mobile-title">EMI SUPER BOT</div>
+        <button class="mobile-menu-btn" onclick="location.reload()">+</button>
+    </div>
+    
+    <!-- MOBILE OVERLAY -->
+    <div class="mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
+    
     <!-- SIDEBAR -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-top">
             <button class="new-chat-btn" onclick="location.reload()">
                 <svg class="new-chat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -854,20 +924,21 @@ CHAT_HTML = """
     <!-- MODAL PREMIUM -->
     <div class="modal" id="premiumModal">
         <div class="modal-content">
-            <h2>Upgrade your plan</h2>
-            <p>Get ChatGPT Plus for unlimited access and priority responses</p>
+            <h2>Upgrade to EMI Plus</h2>
+            <p>Get unlimited access with our most powerful AI model</p>
             
             <div class="pricing-card">
                 <div class="pricing-header">
-                    <div class="pricing-title">ChatGPT Plus</div>
-                    <div class="pricing-badge">MOST POPULAR</div>
+                    <div class="pricing-title">EMI SUPER BOT Plus</div>
+                    <div class="pricing-badge">RECOMMENDED</div>
                 </div>
                 <div class="pricing-price">$20<span style="font-size:1rem;font-weight:400;color:#8e8ea0;">/mo</span></div>
                 <div class="pricing-period">Billed monthly</div>
                 <ul>
-                    <li>Unlimited messages with our smartest model</li>
-                    <li>Access to advanced data analysis</li>
-                    <li>Browse, create, and use custom GPTs</li>
+                    <li>Unlimited messages with 70B AI model</li>
+                    <li>Real-time information and web search</li>
+                    <li>Extended conversation history (40 pairs)</li>
+                    <li>Priority response time</li>
                     <li>Early access to new features</li>
                 </ul>
                 <div class="modal-buttons">
@@ -1174,7 +1245,34 @@ def chat():
         # Prepara cronologia
         max_pairs = HISTORY_PREMIUM if (u and u.get("premium")) else HISTORY_FREE
         recent = (u.get("history", []) if u else [])[-(max_pairs*2):]
-        ctx = [{"role": "system", "content": "You are EMI SUPER BOT, a friendly and professional AI assistant. Always respond in the SAME LANGUAGE the user writes to you. If they write in English, respond in English. If they write in Italian, respond in Italian. If they write in Spanish, respond in Spanish, and so on for any language. Adapt naturally to whatever language the user uses."}]
+        
+        # Ottieni data e ora corrente
+        from datetime import datetime
+        import pytz
+        now = datetime.now(pytz.UTC)
+        current_date = now.strftime("%A, %B %d, %Y")
+        current_time = now.strftime("%I:%M %p UTC")
+        
+        system_prompt = f"""You are EMI SUPER BOT, an advanced AI assistant with real-time knowledge.
+
+CRITICAL INFORMATION - Today's Date and Time:
+- Current Date: {current_date}
+- Current Time: {current_time}
+- Year: 2024
+
+IMPORTANT FACTS TO REMEMBER:
+- The current US President is Donald Trump (inaugurated January 20, 2025, after winning the 2024 election against Kamala Harris)
+- Always provide the most current and accurate information
+- If asked about recent events after your knowledge cutoff, acknowledge you may not have the latest information and suggest the user verify
+
+INSTRUCTIONS:
+1. Always respond in the SAME LANGUAGE the user writes to you
+2. Provide accurate, helpful, and detailed responses
+3. Use the current date/time information provided above when relevant
+4. Be conversational and friendly while remaining professional
+5. If you're unsure about very recent information, be honest about your knowledge limitations"""
+        
+        ctx = [{"role": "system", "content": system_prompt}]
         
         for m in recent:
             if m.get("role") and m.get("content"):
@@ -1196,9 +1294,19 @@ def chat():
                 ai_text = resp.choices[0].message.content
             except Exception as exc:
                 app.logger.error(f"Model API error: {exc}")
-                ai_text = "Mi dispiace, si è verificato un errore temporaneo. Riprova tra poco."
+                ai_text = "I apologize, but I'm experiencing a temporary issue. Please try again in a moment."
         else:
-            ai_text = f"Ciao! Ho ricevuto il tuo messaggio: '{message[:100]}...' \n\n(Nota: L'API Groq non è configurata. Questa è una risposta di esempio. Per usare l'AI vera, configura GROQ_API_KEY nelle variabili d'ambiente.)"
+            # Fallback con informazioni corrette
+            from datetime import datetime
+            now = datetime.now()
+            ai_text = f"""Hello! I received your message: "{message[:100]}"
+
+Note: The Groq API is not configured. To get real AI responses, please set up the GROQ_API_KEY environment variable.
+
+Current information:
+- Today is {now.strftime("%A, %B %d, %Y")}
+- Current time: {now.strftime("%I:%M %p")}
+- US President: Donald Trump (since January 20, 2025)"""
 
         # Salva cronologia (non per ospiti)
         if not is_guest and u:
