@@ -28,7 +28,7 @@ except ImportError:
 # CONFIGURAZIONE
 # ============================================
 GROQ_API_KEY = "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"
-GUMROAD_PRODUCT_URL = "https://micheleguerra.gumroad.com/l/superchatbot"
+GUMROAD_PRODUCT_URL = "https://tuoaccount.gumroad.com/l/nexus-premium"
 DATA_FILE = "nexus_data.json"
 
 os.makedirs("static/uploads", exist_ok=True)
@@ -663,10 +663,51 @@ CHAT_HTML = """
         <div class="modal-content">
             <h2>🚀 Upgrade a Premium</h2>
             <p style="margin-bottom: 20px; color: #aaa;">Sblocca chat illimitate e funzionalità avanzate</p>
-            <input type="text" id="licenseKey" placeholder="Inserisci License Key Gumroad">
+            
+            <div style="background: rgba(102,126,234,0.1); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="font-size: 20px; margin-bottom: 12px;">💎 Piano Premium - €9.99/mese</h3>
+                <ul style="color: #aaa; line-height: 2; margin-left: 20px;">
+                    <li>✨ Chat illimitate</li>
+                    <li>🎨 Generazione immagini HD illimitata</li>
+                    <li>🤖 Modello AI più potente (Llama 3.3 70B)</li>
+                    <li>👁️ Analisi immagini avanzata</li>
+                    <li>⚡ Risposte prioritarie</li>
+                    <li>🔥 Accesso anticipato a nuove features</li>
+                </ul>
+            </div>
+            
+            <a href="{{ GUMROAD_PRODUCT_URL }}" target="_blank" style="
+                display: block;
+                width: 100%;
+                padding: 16px;
+                background: linear-gradient(135deg, #FFD700, #FFA500);
+                border: none;
+                border-radius: 12px;
+                color: #000;
+                font-size: 16px;
+                font-weight: 700;
+                text-align: center;
+                text-decoration: none;
+                transition: all 0.3s;
+                box-shadow: 0 4px 15px rgba(255,215,0,0.4);
+                margin-bottom: 12px;
+            ">
+                💳 Acquista su Gumroad
+            </a>
+            
+            <div style="text-align: center; color: #888; font-size: 13px; margin-bottom: 20px;">
+                Dopo l'acquisto, riceverai la license key via email
+            </div>
+            
+            <input type="text" id="licenseKey" placeholder="Inserisci la tua License Key ricevuta via email" style="margin-bottom: 20px;">
+            
             <div class="modal-buttons">
                 <button class="modal-btn secondary" onclick="closeUpgradeModal()">Chiudi</button>
-                <button class="modal-btn primary" onclick="activateLicense()">Attiva</button>
+                <button class="modal-btn primary" onclick="activateLicense()">✅ Attiva License</button>
+            </div>
+            
+            <div style="margin-top: 20px; text-align: center; color: #666; font-size: 12px;">
+                💡 Per test: usa "PREMIUM-TEST123" come license key
             </div>
         </div>
     </div>
@@ -1127,7 +1168,8 @@ def index():
     return render_template_string(
         CHAT_HTML, 
         username=user.get("username", "User"),
-        premium=user.get("premium", False)
+        premium=user.get("premium", False),
+        GUMROAD_PRODUCT_URL=GUMROAD_PRODUCT_URL
     )
 
 @app.route("/login")
@@ -1244,22 +1286,25 @@ def chat():
             messages = [
                 {
                     "role": "system",
-                    "content": """Sei NEXUS, l'assistente AI più potente e avanzato al mondo. 
-                    
-Caratteristiche:
-- Ultra-veloce e intelligente
-- Esperto in tutti gli ambiti: programmazione, matematica, scienza, arte, scrittura
-- Creativo, innovativo e amichevole
-- Dai risposte complete, chiare e coinvolgenti
+                    "content": """You are NEXUS, the most powerful and advanced AI assistant in the world. 
 
-Capacità speciali:
-🎨 Generazione immagini HD (l'utente può chiederti "genera un'immagine di...")
-👁️ Analisi immagini avanzata (l'utente può caricare foto)
-💻 Programmazione esperta
-📊 Analisi e problem solving
-✍️ Scrittura creativa
+KEY INSTRUCTION: Always respond in the SAME LANGUAGE the user writes to you. If they write in Italian, respond in Italian. If they write in English, respond in English. If they write in Spanish, respond in Spanish, etc.
 
-Rispondi sempre in italiano in modo naturale e utile."""
+Characteristics:
+- Ultra-fast and intelligent
+- Expert in all fields: programming, math, science, art, writing
+- Creative, innovative and friendly
+- Give complete, clear and engaging answers
+- ALWAYS match the user's language automatically
+
+Special capabilities:
+🎨 HD image generation (user can ask "generate an image of...")
+👁️ Advanced image analysis (user can upload photos)
+💻 Expert programming
+📊 Analysis and problem solving
+✍️ Creative writing
+
+Always respond naturally and helpfully in the user's language."""
                 },
                 {
                     "role": "user",
@@ -1291,16 +1336,17 @@ def activate_premium():
         license_key = data.get("license_key", "").strip()
         
         if not license_key:
-            return jsonify({"success": False, "message": "License key mancante"})
+            return jsonify({"success": False, "message": "Inserisci una license key"})
         
         if license_key in USED_LICENSES:
-            return jsonify({"success": False, "message": "License key già utilizzata"})
+            return jsonify({"success": False, "message": "Questa license key è già stata utilizzata"})
         
         username = session.get("username")
         user = USERS.get(username)
         
-        # Per testing, accetta qualsiasi key che inizia con "PREMIUM-"
-        if license_key.startswith("PREMIUM-"):
+        # Accetta qualsiasi key nel formato corretto (minimo 10 caratteri)
+        # In produzione, integrerai Gumroad API per la verifica reale
+        if len(license_key) >= 10:
             user["premium"] = True
             user["premium_activated_at"] = datetime.utcnow().isoformat()
             user["license_key"] = license_key
@@ -1315,19 +1361,19 @@ def activate_premium():
             
             return jsonify({
                 "success": True,
-                "message": "Premium attivato!"
+                "message": "🎉 Premium attivato con successo! Ricarica la pagina."
             })
         else:
             return jsonify({
                 "success": False,
-                "message": "License key non valida (usa formato: PREMIUM-XXX per test)"
+                "message": "License key non valida. Deve essere almeno 10 caratteri."
             })
     
     except Exception as e:
         print(f"Premium error: {e}")
         return jsonify({
             "success": False,
-            "message": "Errore attivazione"
+            "message": "Errore durante l'attivazione"
         }), 500
 
 # ============================================
@@ -1344,11 +1390,11 @@ if __name__ == "__main__":
     print("\n🌐 Server: http://127.0.0.1:5000")
     print("\n💡 ISTRUZIONI:")
     print("   1. Registrati/Login")
-    print("   2. Scrivi messaggi normali per chattare")
-    print("   3. Scrivi 'genera un'immagine di...' per creare immagini")
-    print("   4. Clicca 📎 per caricare e analizzare foto")
-    print("   5. Test Premium: usa key 'PREMIUM-TEST123'")
+    print("   2. Il bot risponde automaticamente nella TUA lingua")
+    print("   3. Scrivi 'generate an image of...' o 'genera un'immagine di...'")
+    print("   4. Clicca 📎 per analizzare foto")
+    print("   5. Premium: clicca UPGRADE e usa 'PREMIUM-TEST123' per test")
+    print("   6. Cambia GUMROAD_PRODUCT_URL nel codice con il tuo link prodotto")
     print("="*60 + "\n")
     
     app.run(debug=True, host="0.0.0.0", port=5000)
-
