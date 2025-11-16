@@ -36,7 +36,7 @@ except ImportError:
 # ============================================
 DATA_FILE = "data.json"
 GROQ_KEY = "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"
-GUMROAD_LINK = "https://micheleguerra.gumroad.com/l/superchatbot"
+GUMROAD_LINK = "https://micheleguerra.gumroad.com/l/emi-premium"
 
 # Crea cartelle
 os.makedirs("static/uploads", exist_ok=True)
@@ -341,54 +341,116 @@ CHAT_HTML = """
             color: #ececf1;
             height: 100vh;
             display: flex;
+            overflow: hidden;
+        }
+        
+        /* SIDEBAR */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 260px;
+            height: 100vh;
+            background: #171717;
+            display: flex;
             flex-direction: column;
+            z-index: 100;
+            transition: transform 0.3s;
         }
-        .header {
-            background: #202123;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #444;
+        .sidebar-top {
+            padding: 8px;
         }
-        .header h1 {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        .header-right {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-        .badge {
-            background: #10a37f;
-            color: white;
-            padding: 5px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .badge.free {
-            background: #565869;
-        }
-        .btn-upgrade {
-            background: #10a37f;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 14px;
-        }
-        .btn-logout {
+        .new-chat-btn {
             background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
             color: #ececf1;
-            padding: 8px 16px;
-            border: 1px solid #565869;
-            border-radius: 8px;
+            padding: 10px;
+            border-radius: 10px;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             font-size: 14px;
+            width: 100%;
+        }
+        .new-chat-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .user-section {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding: 8px;
+        }
+        .user-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            color: #ececf1;
+            font-size: 14px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            width: 100%;
+            border-radius: 8px;
+            text-align: left;
+        }
+        .user-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #19c37d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            flex-shrink: 0;
+        }
+        .user-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .user-name {
+            font-weight: 500;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .user-plan {
+            font-size: 12px;
+            color: #8e8ea0;
+        }
+        .divider {
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 4px 0;
+        }
+        .upgrade-btn {
+            background: rgba(25,195,125,0.1);
+            color: #19c37d;
+            font-weight: 500;
+        }
+        .upgrade-btn:hover {
+            background: rgba(25,195,125,0.15);
+        }
+        
+        /* MAIN */
+        .main {
+            margin-left: 260px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
         .chat-container {
             flex: 1;
@@ -399,17 +461,18 @@ CHAT_HTML = """
             max-width: 800px;
             margin: 0 auto 20px;
             padding: 20px;
-            border-radius: 12px;
             display: flex;
             gap: 15px;
         }
         .message.user {
             background: #343541;
+            border-radius: 12px;
         }
         .message.bot {
             background: #444654;
+            border-radius: 12px;
         }
-        .avatar {
+        .msg-avatar {
             width: 40px;
             height: 40px;
             border-radius: 8px;
@@ -423,21 +486,84 @@ CHAT_HTML = """
             flex: 1;
             line-height: 1.6;
             white-space: pre-wrap;
+            word-wrap: break-word;
         }
+        .content img, .content video {
+            max-width: 300px;
+            border-radius: 8px;
+            margin-top: 8px;
+            display: block;
+        }
+        .content video {
+            max-height: 300px;
+        }
+        
+        /* INPUT */
         .input-area {
             border-top: 1px solid #565869;
-            padding: 20px;
+            padding: 15px;
             background: #343541;
         }
         .input-container {
             max-width: 800px;
             margin: 0 auto;
+            position: relative;
+        }
+        .file-preview {
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .preview-item {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #565869;
+        }
+        .preview-item img, .preview-item video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .preview-remove {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+        }
+        .input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .tool-btn {
+            width: 44px;
+            height: 44px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: #8e8ea0;
+            cursor: pointer;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .tool-btn:hover {
+            background: rgba(255,255,255,0.1);
         }
         #messageInput {
             flex: 1;
-            padding: 15px;
+            padding: 12px 50px 12px 12px;
             border: 1px solid #565869;
             border-radius: 12px;
             background: #40414f;
@@ -453,13 +579,20 @@ CHAT_HTML = """
             border-color: #8e8ea0;
         }
         #sendBtn {
-            padding: 0 20px;
+            position: absolute;
+            right: 8px;
+            bottom: 8px;
+            width: 40px;
+            height: 40px;
             border: none;
-            border-radius: 12px;
+            border-radius: 8px;
             background: #19c37d;
             color: white;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         #sendBtn:hover {
             background: #15a76a;
@@ -468,6 +601,10 @@ CHAT_HTML = """
             background: #565869;
             cursor: not-allowed;
         }
+        #fileInput {
+            display: none;
+        }
+        
         .loading {
             display: flex;
             gap: 5px;
@@ -485,39 +622,147 @@ CHAT_HTML = """
             0%, 80%, 100% { transform: scale(0); }
             40% { transform: scale(1); }
         }
+        
+        /* MOBILE */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                transform: translateX(-100%);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main {
+                margin-left: 0;
+            }
+            .mobile-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 15px;
+                background: #202123;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            .mobile-btn {
+                background: transparent;
+                border: none;
+                color: #ececf1;
+                font-size: 24px;
+                cursor: pointer;
+                padding: 8px;
+            }
+            .mobile-title {
+                font-size: 16px;
+                font-weight: 600;
+            }
+            .overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                z-index: 99;
+            }
+            .overlay.show {
+                display: block;
+            }
+        }
+        @media (min-width: 769px) {
+            .mobile-header, .overlay {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🤖 EMI SUPER BOT</h1>
-        <div class="header-right">
-            <span class="badge {% if premium %}{% else %}free{% endif %}">
-                {% if premium %}PREMIUM{% else %}FREE{% endif %}
-            </span>
+    <div class="mobile-header">
+        <button class="mobile-btn" onclick="toggleSidebar()">☰</button>
+        <div class="mobile-title">EMI SUPER BOT</div>
+        <button class="mobile-btn" onclick="newChat()">+</button>
+    </div>
+    <div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+    
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-top">
+            <button type="button" class="new-chat-btn" onclick="newChat()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+                <span>New chat</span>
+            </button>
+        </div>
+        
+        <div class="sidebar-content"></div>
+        
+        <div class="user-section">
+            {% if is_guest %}
+            <button type="button" class="user-btn" onclick="location.href='/register'">
+                <div class="avatar">?</div>
+                <div class="user-info">
+                    <div class="user-name">Sign up</div>
+                </div>
+            </button>
+            <div class="divider"></div>
+            <button type="button" class="user-btn" onclick="location.href='/login'">
+                <span>Log in</span>
+            </button>
+            {% else %}
+            <button type="button" class="user-btn">
+                <div class="avatar">{{username[0].upper()}}</div>
+                <div class="user-info">
+                    <div class="user-name">{{username}}</div>
+                    <div class="user-plan">{% if premium %}EMI Plus{% else %}Free plan{% endif %}</div>
+                </div>
+            </button>
+            <div class="divider"></div>
             {% if not premium %}
-            <button class="btn-upgrade" onclick="window.open('{{gumroad}}', '_blank')">
-                ⭐ Upgrade
+            <button type="button" class="user-btn upgrade-btn" onclick="window.open('{{gumroad}}','_blank')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                <span>Upgrade to Plus</span>
+            </button>
+            <div class="divider"></div>
+            {% endif %}
+            <button type="button" class="user-btn" onclick="location.href='/logout'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                </svg>
+                <span>Log out</span>
             </button>
             {% endif %}
-            <button class="btn-logout" onclick="location.href='/logout'">
-                Logout
-            </button>
         </div>
     </div>
     
-    <div class="chat-container" id="chatContainer">
-        {% for msg in history %}
-        <div class="message {{msg.role}}">
-            <div class="avatar">{{  '👤' if msg.role == 'user' else '🤖' }}</div>
-            <div class="content">{{msg.content}}</div>
+    <!-- MAIN -->
+    <div class="main">
+        <div class="chat-container" id="chatContainer">
+            {% for msg in history %}
+            <div class="message {{msg.role}}">
+                <div class="msg-avatar">{{  '👤' if msg.role == 'user' else '🤖' }}</div>
+                <div class="content">{{msg.content|safe}}</div>
+            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
-    
-    <div class="input-area">
-        <div class="input-container">
-            <textarea id="messageInput" placeholder="Send a message..."></textarea>
-            <button id="sendBtn">▲</button>
+        
+        <div class="input-area">
+            <div class="input-container">
+                <div class="file-preview" id="filePreview"></div>
+                <div class="input-wrapper">
+                    <button type="button" class="tool-btn" onclick="attachFile()" title="Upload image/video">
+                        📷
+                    </button>
+                    <button type="button" class="tool-btn" onclick="generateImage()" title="Generate AI image">
+                        🎨
+                    </button>
+                    <input type="file" id="fileInput" accept="image/*,video/*" multiple>
+                    <textarea id="messageInput" placeholder="Message EMI SUPER BOT..."></textarea>
+                    <button type="button" id="sendBtn">▲</button>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -525,6 +770,9 @@ CHAT_HTML = """
         const chat = document.getElementById('chatContainer');
         const input = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
+        const fileInput = document.getElementById('fileInput');
+        const filePreview = document.getElementById('filePreview');
+        let selectedFiles = [];
         
         // Auto-resize textarea
         input.addEventListener('input', function() {
@@ -540,19 +788,129 @@ CHAT_HTML = """
             }
         });
         
-        // Send button click
+        // Send button
         sendBtn.addEventListener('click', sendMessage);
+        
+        // File input change
+        fileInput.addEventListener('change', function(e) {
+            Array.from(e.target.files).forEach(file => {
+                if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+                    selectedFiles.push(file);
+                    showPreview(file);
+                }
+            });
+        });
+        
+        function attachFile() {
+            fileInput.click();
+        }
+        
+        function showPreview(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const div = document.createElement('div');
+                div.className = 'preview-item';
+                if (file.type.startsWith('image/')) {
+                    div.innerHTML = `
+                        <img src="${e.target.result}">
+                        <button class="preview-remove" onclick="removeFile('${file.name}')">×</button>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <video src="${e.target.result}"></video>
+                        <button class="preview-remove" onclick="removeFile('${file.name}')">×</button>
+                    `;
+                }
+                filePreview.appendChild(div);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function removeFile(fileName) {
+            selectedFiles = selectedFiles.filter(f => f.name !== fileName);
+            filePreview.innerHTML = '';
+            selectedFiles.forEach(showPreview);
+        }
+        
+        async function generateImage() {
+            const prompt = window.prompt('🎨 Describe the image to generate:');
+            if (!prompt) return;
+            
+            addMessage('user', `🎨 Generate: ${prompt}`);
+            const loadingId = showLoading();
+            
+            try {
+                const res = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({prompt: prompt})
+                });
+                const data = await res.json();
+                hideLoading(loadingId);
+                
+                if (data.url) {
+                    addMessage('bot', `Here's your image:<br><img src="${data.url}" style="max-width:400px;border-radius:12px;margin-top:8px">`);
+                } else {
+                    addMessage('bot', '❌ Failed to generate image.');
+                }
+            } catch (err) {
+                hideLoading(loadingId);
+                addMessage('bot', '❌ Error generating image.');
+            }
+        }
         
         async function sendMessage() {
             const message = input.value.trim();
-            if (!message) return;
+            if (!message && selectedFiles.length === 0) return;
             
             sendBtn.disabled = true;
             input.disabled = true;
             
-            addMessage('user', message);
+            let fileUrls = [];
+            
+            // Upload files first
+            if (selectedFiles.length > 0) {
+                for (const file of selectedFiles) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                        const res = await fetch('/api/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+                        if (data.url) fileUrls.push(data.url);
+                    } catch (err) {
+                        console.error('Upload error:', err);
+                    }
+                }
+            }
+            
+            // Build message with files
+            let fullMessage = message;
+            if (fileUrls.length > 0) {
+                fullMessage += '\n\n' + fileUrls.map(url => `[File: ${url}]`).join('\n');
+            }
+            
+            // Show user message with media
+            let userHtml = escapeHtml(message);
+            if (fileUrls.length > 0) {
+                userHtml += '<br>' + fileUrls.map(url => {
+                    if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                        return `<img src="${url}">`;
+                    } else if (url.match(/\.(mp4|webm|mov)$/i)) {
+                        return `<video src="${url}" controls></video>`;
+                    }
+                    return `<a href="${url}">File</a>`;
+                }).join('');
+            }
+            
+            addMessage('user', userHtml);
             input.value = '';
             input.style.height = 'auto';
+            selectedFiles = [];
+            filePreview.innerHTML = '';
+            fileInput.value = '';
             
             const loadingId = showLoading();
             
@@ -560,7 +918,7 @@ CHAT_HTML = """
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ message: fullMessage })
                 });
                 
                 const data = await response.json();
@@ -585,7 +943,61 @@ CHAT_HTML = """
             const div = document.createElement('div');
             div.className = 'message ' + role;
             div.innerHTML = `
-                <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+                <div class="msg-avatar">${role === 'user' ? '👤' : '🤖'}</div>
+                <div class="content">${content}</div>
+            `;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
+        function showLoading() {
+            const div = document.createElement('div');
+            div.className = 'message bot';
+            div.id = 'loading-' + Date.now();
+            div.innerHTML = `
+                <div class="msg-avatar">🤖</div>
+                <div class="loading">
+                    <div></div><div></div><div></div>
+                </div>
+            `;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+            return div.id;
+        }
+        
+        function hideLoading(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function newChat() {
+            if (confirm('Start a new chat? Current conversation will be saved.')) {
+                location.reload();
+            }
+        }
+        
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('overlay').classList.toggle('show');
+        }
+        
+        function closeSidebar() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('overlay').classList.remove('show');
+        }
+        
+        // Scroll to bottom on load
+        chat.scrollTop = chat.scrollHeight;
+    </script>
+</body>
+</html>
+""" 'user' ? '👤' : '🤖'}</div>
                 <div class="content">${escapeHtml(content)}</div>
             `;
             chat.appendChild(div);
@@ -1146,4 +1558,3 @@ if __name__ == "__main__":
         port=10000,
         debug=False
     )
-
