@@ -1,1560 +1,428 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-EMI SUPER BOT - Il bot più potente al mondo
-Combina ChatGPT + Claude + Gemini + tutto il resto
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Menu, X, Plus, Zap, Crown, LogOut, Sparkles, MessageSquare } from 'lucide-react';
 
-INSTALLAZIONE:
-pip install flask bcrypt groq
+export default function NexusAI() {
+  const [currentView, setCurrentView] = useState('landing');
+  const [authMode, setAuthMode] = useState('login');
+  const [selectedPlan, setSelectedPlan] = useState('');
+  const [user, setUser] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [dailyCount, setDailyCount] = useState(0);
+  const chatEndRef = useRef(null);
 
-AVVIO:
-python app.py
+  const MESSAGE_LIMITS = {
+    guest: 5,
+    free: 20,
+    premium: Infinity
+  };
 
-Account demo: admin / admin123
-"""
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-import os
-import time
-import secrets
-import json
-from datetime import datetime
-from functools import wraps
+  const handlePlanSelect = (plan) => {
+    setSelectedPlan(plan);
+    setCurrentView('auth');
+  };
 
-from flask import Flask, request, jsonify, session, redirect, url_for, render_template_string
-import bcrypt
+  const handleAuth = (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const username = formData.get('username');
+    const isPremium = selectedPlan === 'premium';
+    
+    setUser({
+      username: username || 'Guest',
+      type: selectedPlan || 'guest',
+      isPremium: isPremium,
+      isGuest: !username
+    });
+    setDailyCount(0);
+    setCurrentView('chat');
+    
+    setTimeout(() => {
+      addMessage('bot', `Ciao ${username || 'Guest'}! 👋 Sono NEXUS AI, il bot più intelligente al mondo! Come posso aiutarti oggi?`);
+    }, 500);
+  };
 
-# Groq AI
-try:
-    from groq import Groq
-    HAS_GROQ = True
-except ImportError:
-    HAS_GROQ = False
-    print("⚠️ Groq not installed. Run: pip install groq")
+  const handleGuestMode = () => {
+    setUser({
+      username: 'Guest',
+      type: 'guest',
+      isPremium: false,
+      isGuest: true
+    });
+    setSelectedPlan('guest');
+    setDailyCount(0);
+    setCurrentView('chat');
+    
+    setTimeout(() => {
+      addMessage('bot', 'Benvenuto in modalità Ospite! 👋 Hai 5 messaggi disponibili. Registrati per ottenere 20 messaggi al giorno!');
+    }, 500);
+  };
 
-# ============================================
-# CONFIGURAZIONE
-# ============================================
-DATA_FILE = "data.json"
-GROQ_KEY = "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"
-GUMROAD_LINK = "https://micheleguerra.gumroad.com/l/emi-premium"
+  const addMessage = (role, content) => {
+    setMessages(prev => [...prev, { role, content, timestamp: Date.now() }]);
+  };
 
-# Crea cartelle
-os.makedirs("static/uploads", exist_ok=True)
-os.makedirs("static/generated", exist_ok=True)
+  const sendMessage = (e) => {
+    if (e) e.preventDefault();
+    if (!inputValue.trim() || isTyping) return;
 
-# Flask app
-app = Flask(__name__)
-app.secret_key = secrets.token_urlsafe(32)
+    const userType = user?.type || 'guest';
+    const limit = MESSAGE_LIMITS[userType];
 
-# Groq client
-groq_client = None
-if HAS_GROQ and GROQ_KEY:
-    try:
-        groq_client = Groq(api_key=GROQ_KEY)
-        print("✅ AI Engine: Active")
-    except Exception as e:
-        print(f"⚠️ AI Engine error: {e}")
-
-# ============================================
-# DATABASE FUNCTIONS
-# ============================================
-def load_db():
-    """Carica database da file JSON"""
-    if not os.path.exists(DATA_FILE):
-        return {
-            "users": {},
-            "codes": [],
-            "used_codes": []
-        }
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {"users": {}, "codes": [], "used_codes": []}
-
-def save_db():
-    """Salva database su file JSON"""
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(DB, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"❌ Errore salvataggio: {e}")
-        return False
-
-# Carica DB
-DB = load_db()
-USERS = DB.get("users", {})
-CODES = set(DB.get("codes", []))
-USED_CODES = set(DB.get("used_codes", []))
-
-# ============================================
-# UTILITY FUNCTIONS
-# ============================================
-def get_today():
-    """Ritorna data corrente YYYY-MM-DD"""
-    return datetime.utcnow().strftime("%Y-%m-%d")
-
-def persist_db():
-    """Salva tutto il database"""
-    DB["users"] = USERS
-    DB["codes"] = list(CODES)
-    DB["used_codes"] = list(USED_CODES)
-    save_db()
-
-def login_required(f):
-    """Decorator: richiede login"""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if "username" not in session:
-            return redirect(url_for("index"))
-        return f(*args, **kwargs)
-    return wrapper
-
-def admin_required(f):
-    """Decorator: richiede admin"""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        username = session.get("username")
-        if not username:
-            return redirect(url_for("index"))
-        user = USERS.get(username, {})
-        if not user.get("is_admin", False):
-            return "Admin required", 403
-        return f(*args, **kwargs)
-    return wrapper
-
-# ============================================
-# CREA UTENTE DEMO
-# ============================================
-if "admin" not in USERS:
-    USERS["admin"] = {
-        "password": bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode(),
-        "premium": True,
-        "is_admin": True,
-        "history": [],
-        "daily": {"date": get_today(), "count": 0}
+    if (dailyCount >= limit) {
+      addMessage('bot', `⚠️ Hai raggiunto il limite di ${limit} messaggi! ${userType === 'guest' ? 'Registrati per ottenere 20 messaggi!' : 'Passa a Premium per messaggi illimitati!'}`);
+      return;
     }
-    persist_db()
-    print("✅ Utente demo creato: admin / admin123")
 
-# ============================================
-# HTML TEMPLATES (inline per semplicità)
-# ============================================
+    const userMessage = inputValue;
+    setInputValue('');
+    addMessage('user', userMessage);
+    setIsTyping(true);
+    setDailyCount(prev => prev + 1);
 
-INDEX_HTML = """
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>EMI SUPER BOT</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 400px;
-            width: 100%;
-        }
-        h1 {
-            font-size: 2.5rem;
-            color: #667eea;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        p {
-            color: #666;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .btn {
-            width: 100%;
-            padding: 15px;
-            margin: 10px 0;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: block;
-            text-align: center;
-            transition: all 0.3s;
-        }
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        .btn-primary:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-        }
-        .btn-secondary {
-            background: #10a37f;
-            color: white;
-        }
-        .btn-secondary:hover {
-            background: #0d8c6d;
-        }
-        .btn-guest {
-            background: transparent;
-            color: #667eea;
-            border: 2px solid #667eea;
-        }
-        .btn-guest:hover {
-            background: #667eea;
-            color: white;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🤖 EMI SUPER BOT</h1>
-        <p>The most powerful AI in the world</p>
-        <a href="/register" class="btn btn-secondary">✨ Create Account</a>
-        <a href="/login" class="btn btn-primary">🔐 Login</a>
-        <form action="/guest" method="post" style="margin: 0;">
-            <button type="submit" class="btn btn-guest">👤 Guest Mode</button>
-        </form>
-    </div>
-</body>
-</html>
-"""
+    setTimeout(() => {
+      const response = generateSmartResponse(userMessage);
+      addMessage('bot', response);
+      setIsTyping(false);
+    }, 1000 + Math.random() * 1000);
+  };
 
-AUTH_HTML = """
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>{{title}} - EMI SUPER BOT</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 400px;
-            width: 100%;
-        }
-        h1 {
-            font-size: 2rem;
-            color: #667eea;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .error {
-            background: #fee;
-            color: #c33;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            text-align: center;
-        }
-        input {
-            width: 100%;
-            padding: 15px;
-            margin: 10px 0;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        button {
-            width: 100%;
-            padding: 15px;
-            margin: 15px 0 10px;
-            border: none;
-            border-radius: 10px;
-            background: #667eea;
-            color: white;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        button:hover {
-            background: #5568d3;
-        }
-        a {
-            display: block;
-            text-align: center;
-            color: #667eea;
-            text-decoration: none;
-            margin-top: 15px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>{{title}}</h1>
-        {% if error %}
-        <div class="error">{{error}}</div>
-        {% endif %}
-        <form method="post">
-            <input type="text" name="username" placeholder="Username" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">{{button}}</button>
-        </form>
-        <a href="/">← Back</a>
-    </div>
-</body>
-</html>
-"""
-
-CHAT_HTML = """
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>EMI SUPER BOT - Chat</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: #343541;
-            color: #ececf1;
-            height: 100vh;
-            display: flex;
-            overflow: hidden;
-        }
-        
-        /* SIDEBAR */
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 260px;
-            height: 100vh;
-            background: #171717;
-            display: flex;
-            flex-direction: column;
-            z-index: 100;
-            transition: transform 0.3s;
-        }
-        .sidebar-top {
-            padding: 8px;
-        }
-        .new-chat-btn {
-            background: transparent;
-            border: 1px solid rgba(255,255,255,0.2);
-            color: #ececf1;
-            padding: 10px;
-            border-radius: 10px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            width: 100%;
-        }
-        .new-chat-btn:hover {
-            background: rgba(255,255,255,0.1);
-        }
-        .sidebar-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 8px;
-        }
-        .user-section {
-            border-top: 1px solid rgba(255,255,255,0.1);
-            padding: 8px;
-        }
-        .user-btn {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px;
-            color: #ececf1;
-            font-size: 14px;
-            cursor: pointer;
-            background: transparent;
-            border: none;
-            width: 100%;
-            border-radius: 8px;
-            text-align: left;
-        }
-        .user-btn:hover {
-            background: rgba(255,255,255,0.1);
-        }
-        .avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: #19c37d;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
-            color: white;
-            flex-shrink: 0;
-        }
-        .user-info {
-            flex: 1;
-            min-width: 0;
-        }
-        .user-name {
-            font-weight: 500;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .user-plan {
-            font-size: 12px;
-            color: #8e8ea0;
-        }
-        .divider {
-            height: 1px;
-            background: rgba(255,255,255,0.1);
-            margin: 4px 0;
-        }
-        .upgrade-btn {
-            background: rgba(25,195,125,0.1);
-            color: #19c37d;
-            font-weight: 500;
-        }
-        .upgrade-btn:hover {
-            background: rgba(25,195,125,0.15);
-        }
-        
-        /* MAIN */
-        .main {
-            margin-left: 260px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        .chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }
-        .message {
-            max-width: 800px;
-            margin: 0 auto 20px;
-            padding: 20px;
-            display: flex;
-            gap: 15px;
-        }
-        .message.user {
-            background: #343541;
-            border-radius: 12px;
-        }
-        .message.bot {
-            background: #444654;
-            border-radius: 12px;
-        }
-        .msg-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            flex-shrink: 0;
-        }
-        .content {
-            flex: 1;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        .content img, .content video {
-            max-width: 300px;
-            border-radius: 8px;
-            margin-top: 8px;
-            display: block;
-        }
-        .content video {
-            max-height: 300px;
-        }
-        
-        /* INPUT */
-        .input-area {
-            border-top: 1px solid #565869;
-            padding: 15px;
-            background: #343541;
-        }
-        .input-container {
-            max-width: 800px;
-            margin: 0 auto;
-            position: relative;
-        }
-        .file-preview {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 8px;
-            flex-wrap: wrap;
-        }
-        .preview-item {
-            position: relative;
-            width: 80px;
-            height: 80px;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid #565869;
-        }
-        .preview-item img, .preview-item video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .preview-remove {
-            position: absolute;
-            top: 4px;
-            right: 4px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-            font-size: 12px;
-            line-height: 1;
-        }
-        .input-wrapper {
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-        }
-        .tool-btn {
-            width: 44px;
-            height: 44px;
-            border: none;
-            border-radius: 8px;
-            background: transparent;
-            color: #8e8ea0;
-            cursor: pointer;
-            font-size: 20px;
-            flex-shrink: 0;
-        }
-        .tool-btn:hover {
-            background: rgba(255,255,255,0.1);
-        }
-        #messageInput {
-            flex: 1;
-            padding: 12px 50px 12px 12px;
-            border: 1px solid #565869;
-            border-radius: 12px;
-            background: #40414f;
-            color: #ececf1;
-            font-size: 16px;
-            resize: none;
-            min-height: 52px;
-            max-height: 200px;
-            font-family: inherit;
-        }
-        #messageInput:focus {
-            outline: none;
-            border-color: #8e8ea0;
-        }
-        #sendBtn {
-            position: absolute;
-            right: 8px;
-            bottom: 8px;
-            width: 40px;
-            height: 40px;
-            border: none;
-            border-radius: 8px;
-            background: #19c37d;
-            color: white;
-            cursor: pointer;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        #sendBtn:hover {
-            background: #15a76a;
-        }
-        #sendBtn:disabled {
-            background: #565869;
-            cursor: not-allowed;
-        }
-        #fileInput {
-            display: none;
-        }
-        
-        .loading {
-            display: flex;
-            gap: 5px;
-        }
-        .loading div {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #8e8ea0;
-            animation: bounce 1.4s infinite ease-in-out both;
-        }
-        .loading div:nth-child(1) { animation-delay: -0.32s; }
-        .loading div:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
-        
-        /* MOBILE */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                transform: translateX(-100%);
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .main {
-                margin-left: 0;
-            }
-            .mobile-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 15px;
-                background: #202123;
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-            }
-            .mobile-btn {
-                background: transparent;
-                border: none;
-                color: #ececf1;
-                font-size: 24px;
-                cursor: pointer;
-                padding: 8px;
-            }
-            .mobile-title {
-                font-size: 16px;
-                font-weight: 600;
-            }
-            .overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0,0,0,0.5);
-                z-index: 99;
-            }
-            .overlay.show {
-                display: block;
-            }
-        }
-        @media (min-width: 769px) {
-            .mobile-header, .overlay {
-                display: none !important;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="mobile-header">
-        <button class="mobile-btn" onclick="toggleSidebar()">☰</button>
-        <div class="mobile-title">EMI SUPER BOT</div>
-        <button class="mobile-btn" onclick="newChat()">+</button>
-    </div>
-    <div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+  const generateSmartResponse = (input) => {
+    const lower = input.toLowerCase();
     
-    <!-- SIDEBAR -->
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-top">
-            <button type="button" class="new-chat-btn" onclick="newChat()">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 5v14M5 12h14"/>
-                </svg>
-                <span>New chat</span>
-            </button>
-        </div>
-        
-        <div class="sidebar-content"></div>
-        
-        <div class="user-section">
-            {% if is_guest %}
-            <button type="button" class="user-btn" onclick="location.href='/register'">
-                <div class="avatar">?</div>
-                <div class="user-info">
-                    <div class="user-name">Sign up</div>
+    const isItalian = /[àèéìòù]|che|sono|come|cosa|dove|quando/.test(lower);
+    
+    if (lower.includes('ciao') || lower.includes('hello') || lower.includes('hola')) {
+      if (isItalian) return '👋 Ciao! Come posso aiutarti oggi?';
+      return '👋 Hello! How can I help you today?';
+    }
+
+    if (lower.includes('chi sei') || lower.includes('who are you')) {
+      if (isItalian) return '🤖 Sono NEXUS AI, il bot più intelligente al mondo! Combino ChatGPT, Claude e Gemini. Posso aiutarti in qualsiasi lingua!';
+      return '🤖 I am NEXUS AI, the smartest bot in the world! I combine ChatGPT, Claude and Gemini. I can help you in any language!';
+    }
+
+    if (lower.includes('grazie') || lower.includes('thank')) {
+      if (isItalian) return '😊 Prego! Sono sempre qui per aiutarti!';
+      return '😊 You are welcome! I am always here to help!';
+    }
+
+    if (lower.includes('cod') || lower.includes('programm')) {
+      if (isItalian) return '💻 Certo! Posso aiutarti con Python, JavaScript, HTML, CSS, React e molto altro. Cosa vuoi creare?';
+      return '💻 Sure! I can help with Python, JavaScript, HTML, CSS, React and more. What do you want to create?';
+    }
+
+    if (lower.includes('help') || lower.includes('aiut')) {
+      if (isItalian) return '🎯 Posso aiutarti con:\n\n✨ Programmazione\n📚 Ricerca\n🎨 Creatività\n🧮 Matematica\n🌍 Traduzioni\n\nCosa ti serve?';
+      return '🎯 I can help with:\n\n✨ Programming\n📚 Research\n🎨 Creativity\n🧮 Math\n🌍 Translations\n\nWhat do you need?';
+    }
+
+    if (isItalian) {
+      return `🤔 Interessante! Riguardo a "${input.slice(0, 40)}..." posso dirti che è un argomento affascinante. Puoi darmi più dettagli?`;
+    }
+    return `🤔 Interesting! About "${input.slice(0, 40)}..." I can tell you it's a fascinating topic. Can you give me more details?`;
+  };
+
+  const newChat = () => {
+    if (messages.length > 0 && confirm('Iniziare una nuova chat?')) {
+      setMessages([]);
+      setDailyCount(0);
+    }
+  };
+
+  if (currentView === 'landing') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
+        <div className="max-w-6xl w-full">
+          <div className="text-center mb-16">
+            <h1 className="text-7xl font-black text-white mb-4">
+              NEXUS <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">AI</span>
+            </h1>
+            <p className="text-2xl text-blue-200 mb-4">Il Bot Più Intelligente Al Mondo</p>
+            <p className="text-lg text-blue-300 max-w-2xl mx-auto">Combina ChatGPT, Claude e Gemini. Risponde in tutte le lingue.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 mb-12">
+            <div 
+              onClick={() => handlePlanSelect('free')}
+              className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 border-2 border-white/20 hover:border-blue-400 transition-all cursor-pointer hover:scale-105"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center">
+                  <Zap className="w-6 h-6 text-white" />
                 </div>
-            </button>
-            <div class="divider"></div>
-            <button type="button" class="user-btn" onclick="location.href='/login'">
-                <span>Log in</span>
-            </button>
-            {% else %}
-            <button type="button" class="user-btn">
-                <div class="avatar">{{username[0].upper()}}</div>
-                <div class="user-info">
-                    <div class="user-name">{{username}}</div>
-                    <div class="user-plan">{% if premium %}EMI Plus{% else %}Free plan{% endif %}</div>
+                <div>
+                  <h3 className="text-2xl font-bold text-white">Free Plan</h3>
+                  <p className="text-blue-300">Inizia Gratis</p>
                 </div>
+              </div>
+              
+              <div className="space-y-3 mb-8">
+                <p className="text-blue-100">✓ 20 messaggi al giorno</p>
+                <p className="text-blue-100">✓ Risposte intelligenti</p>
+                <p className="text-blue-100">✓ Tutte le lingue</p>
+                <p className="text-blue-100">✓ Storico conversazioni</p>
+              </div>
+
+              <button className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-bold py-4 rounded-xl">
+                Inizia Gratis →
+              </button>
+            </div>
+
+            <div 
+              onClick={() => handlePlanSelect('premium')}
+              className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 backdrop-blur-xl rounded-3xl p-8 border-2 border-yellow-400 transition-all cursor-pointer hover:scale-105 relative"
+            >
+              <div className="absolute top-4 right-4 bg-yellow-400 text-purple-900 px-3 py-1 rounded-full text-sm font-bold">
+                BEST VALUE
+              </div>
+              
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center">
+                  <Crown className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-white">Premium</h3>
+                  <p className="text-yellow-300">Potenza Illimitata</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3 mb-8">
+                <p className="text-white font-semibold">✓ Messaggi illimitati</p>
+                <p className="text-white font-semibold">✓ Risposte prioritarie</p>
+                <p className="text-white font-semibold">✓ Modelli AI avanzati</p>
+                <p className="text-white font-semibold">✓ Supporto prioritario</p>
+                <p className="text-white font-semibold">✓ Funzioni esclusive</p>
+              </div>
+
+              <button className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-purple-900 font-bold py-4 rounded-xl">
+                Diventa Premium →
+              </button>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <button 
+              onClick={handleGuestMode}
+              className="text-blue-300 hover:text-white transition-colors text-lg font-medium underline"
+            >
+              Continua come Ospite (5 messaggi)
             </button>
-            <div class="divider"></div>
-            {% if not premium %}
-            <button type="button" class="user-btn upgrade-btn" onclick="window.open('{{gumroad}}','_blank')">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-                </svg>
-                <span>Upgrade to Plus</span>
-            </button>
-            <div class="divider"></div>
-            {% endif %}
-            <button type="button" class="user-btn" onclick="location.href='/logout'">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
-                </svg>
-                <span>Log out</span>
-            </button>
-            {% endif %}
+          </div>
         </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'auth') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
+        <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 max-w-md w-full border-2 border-white/20">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-white mb-2">
+              {authMode === 'login' ? 'Bentornato!' : 'Crea Account'}
+            </h2>
+            <p className="text-blue-300">
+              Piano: <span className="font-bold text-white">{selectedPlan === 'premium' ? 'Premium' : 'Free'}</span>
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-6">
+            <div>
+              <label className="block text-blue-200 mb-2">Username</label>
+              <input
+                type="text"
+                name="username"
+                required
+                className="w-full px-4 py-3 bg-white/10 border-2 border-white/20 rounded-xl text-white placeholder-blue-300 focus:outline-none focus:border-blue-400"
+                placeholder="Scegli username"
+              />
+            </div>
+
+            <div>
+              <label className="block text-blue-200 mb-2">Password</label>
+              <input
+                type="password"
+                name="password"
+                required
+                className="w-full px-4 py-3 bg-white/10 border-2 border-white/20 rounded-xl text-white placeholder-blue-300 focus:outline-none focus:border-blue-400"
+                placeholder="Password"
+              />
+            </div>
+
+            {authMode === 'register' && (
+              <div>
+                <label className="block text-blue-200 mb-2">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  className="w-full px-4 py-3 bg-white/10 border-2 border-white/20 rounded-xl text-white placeholder-blue-300 focus:outline-none focus:border-blue-400"
+                  placeholder="Email"
+                />
+              </div>
+            )}
+
+            <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-bold py-4 rounded-xl">
+              {authMode === 'login' ? 'Accedi' : 'Registrati'}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center space-y-3">
+            <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="text-blue-300 hover:text-white">
+              {authMode === 'login' ? 'Registrati' : 'Hai un account? Accedi'}
+            </button>
+            <div>
+              <button onClick={handleGuestMode} className="text-blue-400 hover:text-white underline">
+                Continua come Ospite
+              </button>
+            </div>
+            <div>
+              <button onClick={() => setCurrentView('landing')} className="text-blue-300 hover:text-white text-sm">
+                ← Torna indietro
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-screen bg-gray-900 flex overflow-hidden">
+      <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative z-50 w-64 bg-gray-950 h-full flex flex-col transition-transform`}>
+        <div className="p-4 border-b border-gray-800">
+          <button onClick={newChat} className="w-full flex items-center gap-2 px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-white">
+            <Plus className="w-5 h-5" />
+            <span>Nuova Chat</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <button className="w-full text-left px-4 py-3 text-gray-300 hover:bg-gray-800 rounded-xl flex items-center gap-2">
+            <MessageSquare className="w-4 h-4" />
+            <span className="text-sm">Chat corrente</span>
+          </button>
+        </div>
+
+        <div className="border-t border-gray-800 p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold">
+              {user?.username?.[0]?.toUpperCase() || 'G'}
+            </div>
+            <div className="flex-1">
+              <div className="text-white font-medium">{user?.username}</div>
+              <div className="text-sm text-gray-400">
+                {user?.isPremium ? (
+                  <span className="flex items-center gap-1">
+                    <Crown className="w-3 h-3 text-yellow-400" />
+                    Premium
+                  </span>
+                ) : (
+                  `${user?.type === 'guest' ? 'Ospite' : 'Free'} • ${dailyCount}/${MESSAGE_LIMITS[user?.type || 'guest']}`
+                )}
+              </div>
+            </div>
+          </div>
+
+          {!user?.isPremium && (
+            <button className="w-full px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg text-sm mb-2 flex items-center justify-center gap-2">
+              <Crown className="w-4 h-4" />
+              Upgrade
+            </button>
+          )}
+
+          {!user?.isGuest && (
+            <button onClick={() => setCurrentView('landing')} className="w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm flex items-center justify-center gap-2">
+              <LogOut className="w-4 h-4" />
+              Esci
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col">
+        <div className="md:hidden bg-gray-950 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-white">
+            {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+          <span className="text-white font-bold">NEXUS AI</span>
+          <button onClick={newChat} className="text-white">
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-center px-4">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-3xl flex items-center justify-center mb-6">
+                <Sparkles className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold text-white mb-3">Benvenuto in NEXUS AI</h2>
+              <p className="text-gray-400 max-w-md">Il bot più intelligente al mondo. Chiedi qualsiasi cosa!</p>
+            </div>
+          )}
+
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.role === 'bot' && (
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+              )}
+              <div className={`max-w-3xl px-4 py-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-100'}`}>
+                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+              </div>
+              {msg.role === 'user' && (
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold">
+                  {user?.username?.[0]?.toUpperCase() || 'U'}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {isTyping && (
+            <div className="flex gap-4 justify-start">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <div className="bg-gray-800 px-4 py-3 rounded-2xl">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        <div className="border-t border-gray-800 p-4">
+          <form onSubmit={sendMessage} className="max-w-4xl mx-auto flex gap-2">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Scrivi un messaggio..."
+              className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={!inputValue.trim() || isTyping}
+              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
-    
-    <!-- MAIN -->
-    <div class="main">
-        <div class="chat-container" id="chatContainer">
-            {% for msg in history %}
-            <div class="message {{msg.role}}">
-                <div class="msg-avatar">{{  '👤' if msg.role == 'user' else '🤖' }}</div>
-                <div class="content">{{msg.content|safe}}</div>
-            </div>
-            {% endfor %}
-        </div>
-        
-        <div class="input-area">
-            <div class="input-container">
-                <div class="file-preview" id="filePreview"></div>
-                <div class="input-wrapper">
-                    <button type="button" class="tool-btn" onclick="attachFile()" title="Upload image/video">
-                        📷
-                    </button>
-                    <button type="button" class="tool-btn" onclick="generateImage()" title="Generate AI image">
-                        🎨
-                    </button>
-                    <input type="file" id="fileInput" accept="image/*,video/*" multiple>
-                    <textarea id="messageInput" placeholder="Message EMI SUPER BOT..."></textarea>
-                    <button type="button" id="sendBtn">▲</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        const chat = document.getElementById('chatContainer');
-        const input = document.getElementById('messageInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const fileInput = document.getElementById('fileInput');
-        const filePreview = document.getElementById('filePreview');
-        let selectedFiles = [];
-        
-        // Auto-resize textarea
-        input.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = this.scrollHeight + 'px';
-        });
-        
-        // Send on Enter
-        input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-        
-        // Send button
-        sendBtn.addEventListener('click', sendMessage);
-        
-        // File input change
-        fileInput.addEventListener('change', function(e) {
-            Array.from(e.target.files).forEach(file => {
-                if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-                    selectedFiles.push(file);
-                    showPreview(file);
-                }
-            });
-        });
-        
-        function attachFile() {
-            fileInput.click();
-        }
-        
-        function showPreview(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const div = document.createElement('div');
-                div.className = 'preview-item';
-                if (file.type.startsWith('image/')) {
-                    div.innerHTML = `
-                        <img src="${e.target.result}">
-                        <button class="preview-remove" onclick="removeFile('${file.name}')">×</button>
-                    `;
-                } else {
-                    div.innerHTML = `
-                        <video src="${e.target.result}"></video>
-                        <button class="preview-remove" onclick="removeFile('${file.name}')">×</button>
-                    `;
-                }
-                filePreview.appendChild(div);
-            };
-            reader.readAsDataURL(file);
-        }
-        
-        function removeFile(fileName) {
-            selectedFiles = selectedFiles.filter(f => f.name !== fileName);
-            filePreview.innerHTML = '';
-            selectedFiles.forEach(showPreview);
-        }
-        
-        async function generateImage() {
-            const prompt = window.prompt('🎨 Describe the image to generate:');
-            if (!prompt) return;
-            
-            addMessage('user', `🎨 Generate: ${prompt}`);
-            const loadingId = showLoading();
-            
-            try {
-                const res = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: prompt})
-                });
-                const data = await res.json();
-                hideLoading(loadingId);
-                
-                if (data.url) {
-                    addMessage('bot', `Here's your image:<br><img src="${data.url}" style="max-width:400px;border-radius:12px;margin-top:8px">`);
-                } else {
-                    addMessage('bot', '❌ Failed to generate image.');
-                }
-            } catch (err) {
-                hideLoading(loadingId);
-                addMessage('bot', '❌ Error generating image.');
-            }
-        }
-        
-        async function sendMessage() {
-            const message = input.value.trim();
-            if (!message && selectedFiles.length === 0) return;
-            
-            sendBtn.disabled = true;
-            input.disabled = true;
-            
-            let fileUrls = [];
-            
-            // Upload files first
-            if (selectedFiles.length > 0) {
-                for (const file of selectedFiles) {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    try {
-                        const res = await fetch('/api/upload', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const data = await res.json();
-                        if (data.url) fileUrls.push(data.url);
-                    } catch (err) {
-                        console.error('Upload error:', err);
-                    }
-                }
-            }
-            
-            // Build message with files
-            let fullMessage = message;
-            if (fileUrls.length > 0) {
-                fullMessage += '\n\n' + fileUrls.map(url => `[File: ${url}]`).join('\n');
-            }
-            
-            // Show user message with media
-            let userHtml = escapeHtml(message);
-            if (fileUrls.length > 0) {
-                userHtml += '<br>' + fileUrls.map(url => {
-                    if (url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                        return `<img src="${url}">`;
-                    } else if (url.match(/\.(mp4|webm|mov)$/i)) {
-                        return `<video src="${url}" controls></video>`;
-                    }
-                    return `<a href="${url}">File</a>`;
-                }).join('');
-            }
-            
-            addMessage('user', userHtml);
-            input.value = '';
-            input.style.height = 'auto';
-            selectedFiles = [];
-            filePreview.innerHTML = '';
-            fileInput.value = '';
-            
-            const loadingId = showLoading();
-            
-            try {
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: fullMessage })
-                });
-                
-                const data = await response.json();
-                hideLoading(loadingId);
-                
-                if (data.error) {
-                    addMessage('bot', '❌ ' + data.error);
-                } else {
-                    addMessage('bot', data.reply);
-                }
-            } catch (error) {
-                hideLoading(loadingId);
-                addMessage('bot', '❌ Connection error. Please try again.');
-            }
-            
-            sendBtn.disabled = false;
-            input.disabled = false;
-            input.focus();
-        }
-        
-        function addMessage(role, content) {
-            const div = document.createElement('div');
-            div.className = 'message ' + role;
-            div.innerHTML = `
-                <div class="msg-avatar">${role === 'user' ? '👤' : '🤖'}</div>
-                <div class="content">${content}</div>
-            `;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        }
-        
-        function showLoading() {
-            const div = document.createElement('div');
-            div.className = 'message bot';
-            div.id = 'loading-' + Date.now();
-            div.innerHTML = `
-                <div class="msg-avatar">🤖</div>
-                <div class="loading">
-                    <div></div><div></div><div></div>
-                </div>
-            `;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-            return div.id;
-        }
-        
-        function hideLoading(id) {
-            const el = document.getElementById(id);
-            if (el) el.remove();
-        }
-        
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        function newChat() {
-            if (confirm('Start a new chat? Current conversation will be saved.')) {
-                location.reload();
-            }
-        }
-        
-        function toggleSidebar() {
-            document.getElementById('sidebar').classList.toggle('open');
-            document.getElementById('overlay').classList.toggle('show');
-        }
-        
-        function closeSidebar() {
-            document.getElementById('sidebar').classList.remove('open');
-            document.getElementById('overlay').classList.remove('show');
-        }
-        
-        // Scroll to bottom on load
-        chat.scrollTop = chat.scrollHeight;
-    </script>
-</body>
-</html>
-""" 'user' ? '👤' : '🤖'}</div>
-                <div class="content">${escapeHtml(content)}</div>
-            `;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-        }
-        
-        function showLoading() {
-            const div = document.createElement('div');
-            div.className = 'message bot';
-            div.id = 'loading-' + Date.now();
-            div.innerHTML = `
-                <div class="avatar">🤖</div>
-                <div class="loading">
-                    <div></div><div></div><div></div>
-                </div>
-            `;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
-            return div.id;
-        }
-        
-        function hideLoading(id) {
-            const el = document.getElementById(id);
-            if (el) el.remove();
-        }
-        
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        // Scroll to bottom on load
-        chat.scrollTop = chat.scrollHeight;
-    </script>
-</body>
-</html>
-"""
-
-# ============================================
-# ROUTES
-# ============================================
-
-@app.route("/")
-def index():
-    """Homepage"""
-    if "username" in session:
-        return redirect(url_for("chat"))
-    return render_template_string(INDEX_HTML)
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    """Registrazione nuovo utente"""
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        
-        if not username or not password:
-            return render_template_string(AUTH_HTML, 
-                title="Register", 
-                button="Create Account",
-                error="Username and password required")
-        
-        if username in USERS:
-            return render_template_string(AUTH_HTML,
-                title="Register",
-                button="Create Account",
-                error="Username already exists")
-        
-        # Crea nuovo utente
-        USERS[username] = {
-            "password": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
-            "premium": False,
-            "is_admin": False,
-            "history": [],
-            "daily": {"date": get_today(), "count": 0}
-        }
-        persist_db()
-        
-        session["username"] = username
-        return redirect(url_for("chat"))
-    
-    return render_template_string(AUTH_HTML, 
-        title="Register", 
-        button="Create Account",
-        error=None)
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    """Login utente"""
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        
-        if not username or not password:
-            return render_template_string(AUTH_HTML,
-                title="Login",
-                button="Login",
-                error="Username and password required")
-        
-        user = USERS.get(username)
-        if not user:
-            return render_template_string(AUTH_HTML,
-                title="Login",
-                button="Login",
-                error="Invalid credentials")
-        
-        # Verifica password
-        stored_pw = user.get("password", "")
-        if isinstance(stored_pw, str):
-            stored_pw = stored_pw.encode()
-        
-        if not bcrypt.checkpw(password.encode(), stored_pw):
-            return render_template_string(AUTH_HTML,
-                title="Login",
-                button="Login",
-                error="Invalid credentials")
-        
-        session["username"] = username
-        return redirect(url_for("chat"))
-    
-    return render_template_string(AUTH_HTML,
-        title="Login",
-        button="Login",
-        error=None)
-
-@app.route("/guest", methods=["POST"])
-def guest():
-    """Modalità ospite"""
-    session["username"] = "guest_" + secrets.token_hex(4)
-    session["is_guest"] = True
-    return redirect(url_for("chat"))
-
-@app.route("/logout")
-def logout():
-    """Logout"""
-    session.clear()
-    return redirect(url_for("index"))
-
-@app.route("/chat")
-@login_required
-def chat():
-    """Pagina chat principale"""
-    username = session.get("username")
-    is_guest = session.get("is_guest", False)
-    
-    if is_guest:
-        user = {"premium": False, "history": []}
-    else:
-        user = USERS.get(username, {})
-    
-    history = user.get("history", [])[-20:]  # Ultime 20 righe
-    
-    return render_template_string(CHAT_HTML,
-        premium=user.get("premium", False),
-        history=history,
-        gumroad=GUMROAD_LINK)
-
-@app.route("/api/chat", methods=["POST"])
-@login_required
-def api_chat():
-    """API per inviare messaggi"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Invalid request"}), 400
-        
-        message = data.get("message", "").strip()
-        if not message:
-            return jsonify({"error": "Empty message"}), 400
-        
-        username = session.get("username")
-        is_guest = session.get("is_guest", False)
-        
-        # Get user
-        if is_guest:
-            user = {"premium": False, "history": []}
-        else:
-            user = USERS.get(username, {})
-            if not user:
-                return jsonify({"error": "User not found"}), 404
-        
-        # Check daily limit for free users
-        if not user.get("premium", False) and not is_guest:
-            daily = user.get("daily", {"date": get_today(), "count": 0})
-            if daily.get("date") != get_today():
-                daily = {"date": get_today(), "count": 0}
-                user["daily"] = daily
-            
-            if daily.get("count", 0) >= 20:
-                return jsonify({"error": "Daily limit reached. Upgrade to Premium for unlimited messages!"}), 429
-            
-            daily["count"] = daily.get("count", 0) + 1
-        
-        # Prepare context
-        history = user.get("history", [])[-8:]
-        
-        # Build AI prompt
-        now = datetime.utcnow()
-        system_prompt = f"""You are EMI SUPER BOT, the world's most advanced AI assistant.
-
-Current Date: {now.strftime("%A, %B %d, %Y")}
-Current Time: {now.strftime("%H:%M")} UTC
-Year: 2024
-
-You combine the best features of ChatGPT, Claude, and Gemini.
-You NEVER make mistakes and always provide perfectly accurate information.
-
-IMPORTANT WORLD FACTS (2024-2025):
-- US President: Donald Trump (inaugurated January 20, 2025)
-- Italy PM: Giorgia Meloni
-- France President: Emmanuel Macron
-- UK PM: Rishi Sunak
-- Major AI: ChatGPT, Claude, Gemini, EMI SUPER BOT
-
-INSTRUCTIONS:
-1. Always respond in the SAME LANGUAGE the user writes to you
-2. Provide detailed, accurate, and well-structured responses
-3. Use bullet points, numbering, and clear formatting
-4. Be conversational yet professional
-5. Never invent information - if unsure, say so"""
-        
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        for h in history:
-            messages.append({
-                "role": h.get("role", "user"),
-                "content": h.get("content", "")
-            })
-        
-        messages.append({"role": "user", "content": message})
-        
-        # Call AI
-        if groq_client:
-            try:
-                model = "llama-3.1-70b-versatile" if user.get("premium") else "llama-3.1-8b-instant"
-                response = groq_client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    max_tokens=1024,
-                    temperature=0.7
-                )
-                reply = response.choices[0].message.content
-            except Exception as e:
-                app.logger.error(f"Groq error: {e}")
-                reply = "I apologize, but I'm experiencing a temporary issue. Please try again."
-        else:
-            # Fallback response
-            reply = f"Hello! I received your message: \"{message[:100]}...\"\n\n(Note: Groq AI is not configured. Install with: pip install groq)"
-        
-        # Save to history (only for registered users)
-        if not is_guest:
-            user.setdefault("history", [])
-            user["history"].append({"role": "user", "content": message})
-            user["history"].append({"role": "bot", "content": reply})
-            
-            # Keep only last 40 messages
-            if len(user["history"]) > 40:
-                user["history"] = user["history"][-40:]
-            
-            persist_db()
-        
-        return jsonify({"reply": reply})
-        
-    except Exception as e:
-        app.logger.error(f"Chat error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/upgrade", methods=["POST"])
-@login_required
-def api_upgrade():
-    """Attiva codice premium"""
-    try:
-        data = request.get_json() or {}
-        code = data.get("code", "").strip()
-        
-        if not code:
-            return jsonify({"error": "No code provided"}), 400
-        
-        if code in USED_CODES:
-            return jsonify({"error": "Code already used"}), 400
-        
-        if code not in CODES:
-            return jsonify({"error": "Invalid code"}), 400
-        
-        username = session.get("username")
-        if session.get("is_guest"):
-            return jsonify({"error": "Guests cannot upgrade"}), 400
-        
-        user = USERS.get(username)
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-        
-        # Attiva premium
-        user["premium"] = True
-        USED_CODES.add(code)
-        persist_db()
-        
-        return jsonify({"success": True, "message": "Premium activated!"})
-        
-    except Exception as e:
-        app.logger.error(f"Upgrade error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin")
-@admin_required
-def admin():
-    """Pannello admin"""
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Admin Panel</title>
-        <style>
-            body { font-family: system-ui; padding: 20px; background: #f5f5f5; }
-            .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; }
-            h1 { color: #333; margin-bottom: 30px; }
-            .section { margin: 30px 0; }
-            button { padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 5px; }
-            button:hover { background: #5568d3; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background: #667eea; color: white; }
-            .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-            .badge-premium { background: #ffd700; color: #000; }
-            .badge-free { background: #ccc; color: #333; }
-            input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
-            code { background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-family: monospace; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🔧 Admin Panel</h1>
-            
-            <div class="section">
-                <h2>Generate Premium Codes</h2>
-                <input type="number" id="numCodes" value="5" min="1" max="100">
-                <button onclick="generateCodes()">Generate Codes</button>
-                <div id="codesResult"></div>
-            </div>
-            
-            <div class="section">
-                <h2>Users ({{total_users}})</h2>
-                <table>
-                    <tr>
-                        <th>Username</th>
-                        <th>Plan</th>
-                        <th>Admin</th>
-                        <th>Messages Today</th>
-                        <th>Actions</th>
-                    </tr>
-                    {% for username, user in users.items() %}
-                    <tr>
-                        <td><strong>{{username}}</strong></td>
-                        <td>
-                            {% if user.premium %}
-                            <span class="badge badge-premium">PREMIUM</span>
-                            {% else %}
-                            <span class="badge badge-free">FREE</span>
-                            {% endif %}
-                        </td>
-                        <td>{% if user.is_admin %}✅{% else %}❌{% endif %}</td>
-                        <td>{{user.daily.count if user.daily else 0}}</td>
-                        <td>
-                            <button onclick="togglePremium('{{username}}')">Toggle Premium</button>
-                            <button onclick="deleteUser('{{username}}')">Delete</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </table>
-            </div>
-            
-            <div class="section">
-                <h2>Premium Codes</h2>
-                <p><strong>Valid:</strong> {{valid_codes|length}} | <strong>Used:</strong> {{used_codes|length}}</p>
-                <details>
-                    <summary style="cursor: pointer; padding: 10px; background: #f0f0f0; border-radius: 4px;">
-                        Show all codes ({{valid_codes|length}})
-                    </summary>
-                    <div style="margin-top: 10px;">
-                        {% for code in valid_codes %}
-                        <div style="padding: 8px; margin: 4px 0; background: #f9f9f9; border-radius: 4px;">
-                            <code>{{code}}</code>
-                            <button onclick="revokeCode('{{code}}')">Revoke</button>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </details>
-            </div>
-            
-            <a href="/chat"><button>← Back to Chat</button></a>
-        </div>
-        
-        <script>
-            async function generateCodes() {
-                const n = document.getElementById('numCodes').value;
-                const res = await fetch('/admin/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({count: parseInt(n)})
-                });
-                const data = await res.json();
-                if (data.codes) {
-                    document.getElementById('codesResult').innerHTML = 
-                        '<h3>✅ Generated ' + data.codes.length + ' codes:</h3>' +
-                        data.codes.map(c => '<div style="margin:5px 0"><code>' + c + '</code></div>').join('');
-                }
-            }
-            
-            async function togglePremium(username) {
-                if (!confirm('Toggle premium for ' + username + '?')) return;
-                const res = await fetch('/admin/toggle/' + username, {method: 'POST'});
-                if (res.ok) location.reload();
-            }
-            
-            async function deleteUser(username) {
-                if (!confirm('Delete user ' + username + '? This cannot be undone!')) return;
-                const res = await fetch('/admin/delete/' + username, {method: 'POST'});
-                if (res.ok) location.reload();
-            }
-            
-            async function revokeCode(code) {
-                if (!confirm('Revoke code ' + code + '?')) return;
-                const res = await fetch('/admin/revoke', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({code: code})
-                });
-                if (res.ok) location.reload();
-            }
-        </script>
-    </body>
-    </html>
-    """
-    
-    return render_template_string(html,
-        users=USERS,
-        total_users=len(USERS),
-        valid_codes=sorted(CODES),
-        used_codes=USED_CODES)
-
-@app.route("/admin/generate", methods=["POST"])
-@admin_required
-def admin_generate():
-    """Genera codici premium"""
-    try:
-        data = request.get_json() or {}
-        count = min(int(data.get("count", 5)), 100)
-        
-        new_codes = []
-        for _ in range(count):
-            code = secrets.token_hex(6)
-            CODES.add(code)
-            new_codes.append(code)
-        
-        persist_db()
-        return jsonify({"success": True, "codes": new_codes})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin/toggle/<username>", methods=["POST"])
-@admin_required
-def admin_toggle(username):
-    """Toggle premium per utente"""
-    if username not in USERS:
-        return "User not found", 404
-    USERS[username]["premium"] = not USERS[username].get("premium", False)
-    persist_db()
-    return "OK", 200
-
-@app.route("/admin/delete/<username>", methods=["POST"])
-@admin_required
-def admin_delete(username):
-    """Elimina utente"""
-    if username in USERS:
-        del USERS[username]
-        persist_db()
-    return "OK", 200
-
-@app.route("/admin/revoke", methods=["POST"])
-@admin_required
-def admin_revoke():
-    """Revoca codice premium"""
-    data = request.get_json() or {}
-    code = data.get("code")
-    if code in CODES:
-        CODES.remove(code)
-        persist_db()
-    return "OK", 200
-
-@app.route("/webhook/gumroad", methods=["POST"])
-def gumroad_webhook():
-    """Webhook Gumroad per pagamenti automatici"""
-    try:
-        # Verifica firma (opzionale)
-        # signature = request.headers.get("X-Gumroad-Signature")
-        
-        # Genera codice premium
-        code = secrets.token_hex(6)
-        CODES.add(code)
-        persist_db()
-        
-        # In produzione: invia codice via email al cliente
-        # email = request.form.get("email")
-        # send_email(email, code)
-        
-        return jsonify({"success": True, "code": code}), 200
-    except Exception as e:
-        app.logger.error(f"Webhook error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/health")
-def health():
-    """Health check"""
-    return jsonify({
-        "status": "ok",
-        "ai_engine": "active" if groq_client else "demo",
-        "users": len(USERS),
-        "codes": len(CODES)
-    })
-
-# ============================================
-# ERROR HANDLERS
-# ============================================
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Not found"}), 404
-
-@app.errorhandler(500)
-def internal_error(e):
-    app.logger.exception("Internal error:")
-    return jsonify({"error": "Internal server error"}), 500
-
-# ============================================
-# MAIN
-# ============================================
-if __name__ == "__main__":
-    print("")
-    print("=" * 50)
-    print("🚀 EMI SUPER BOT - Starting...")
-    print("=" * 50)
-    print(f"📍 URL: http://localhost:10000")
-    print(f"🤖 AI Engine: {'✅ Active' if groq_client else '⚠️ Demo mode'}")
-    print(f"👥 Users: {len(USERS)}")
-    print(f"🎟️ Premium Codes: {len(CODES)}")
-    print("")
-    print("📝 Demo Account:")
-    print("   Username: admin")
-    print("   Password: admin123")
-    print("")
-    print("=" * 50)
-    print("")
-    
-    # Avvia server
-    app.run(
-        host="0.0.0.0",
-        port=10000,
-        debug=False
-    )
+  );
+}
