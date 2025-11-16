@@ -24,11 +24,18 @@ except ImportError:
     HAS_GROQ = False
     print("⚠️ pip install groq")
 
+try:
+    import pytz
+    HAS_PYTZ = True
+except ImportError:
+    HAS_PYTZ = False
+    print("⚠️ pip install pytz")
+
 # ============================================
 # CONFIGURAZIONE
 # ============================================
 GROQ_API_KEY = "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"
-GUMROAD_PRODUCT_URL = "https://tuoaccount.gumroad.com/l/nexus-premium"
+GUMROAD_PRODUCT_URL = "https://micheleguerra.gumroad.com/l/superchatbot"
 DATA_FILE = "nexus_data.json"
 
 os.makedirs("static/uploads", exist_ok=True)
@@ -36,6 +43,7 @@ os.makedirs("static/generated", exist_ok=True)
 
 app = Flask(__name__)
 app.secret_key = secrets.token_urlsafe(32)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # Sessione dura 30 giorni
 
 # Groq Client
 groq_client = None
@@ -730,6 +738,7 @@ CHAT_HTML = """
     <script>
         let selectedFile = null;
         let currentChatId = Date.now();
+        let currentChatMessages = [];  // Messaggi della chat corrente
         let chatHistory = {{ chat_history|safe }};
         let isGuest = {{ 'true' if is_guest else 'false' }};
         
@@ -779,13 +788,21 @@ CHAT_HTML = """
             const chatDiv = document.getElementById('chat');
             chatDiv.innerHTML = '';
             
+            currentChatMessages = [];
             chat.messages.forEach(msg => {
                 addMessageToUI(msg.role, msg.content, msg.media);
+                currentChatMessages.push(msg);
             });
         }
 
         function newChat() {
+            // Salva la chat corrente prima di iniziarne una nuova
+            if (currentChatMessages.length > 0 && !isGuest) {
+                saveCurrentChat();
+            }
+            
             currentChatId = Date.now();
+            currentChatMessages = [];
             document.getElementById('chat').innerHTML = `
                 <div class="welcome">
                     <div class="welcome-icon">🤖</div>
@@ -795,6 +812,23 @@ CHAT_HTML = """
             `;
             document.getElementById('input').value = '';
             selectedFile = null;
+        }
+        
+        async function saveCurrentChat() {
+            if (isGuest || currentChatMessages.length === 0) return;
+            
+            try {
+                await fetch('/api/save-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: currentChatMessages,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+            } catch (e) {
+                console.error('Errore salvataggio chat:', e);
+            }
         }
 
         async function sendMessage() {
@@ -811,11 +845,13 @@ CHAT_HTML = """
             if (welcome) welcome.remove();
             
             addMessageToUI('user', text);
+            currentChatMessages.push({role: 'user', content: text, media: null});
             input.value = '';
             
             try {
                 const formData = new FormData();
                 formData.append('message', text);
+                formData.append('chat_id', currentChatId);
                 
                 if (selectedFile) {
                     formData.append('file', selectedFile);
@@ -837,14 +873,10 @@ CHAT_HTML = """
                 
                 if (data.error) {
                     addMessageToUI('bot', `❌ ${data.error}`);
+                    currentChatMessages.push({role: 'bot', content: data.error, media: null});
                 } else {
                     addMessageToUI('bot', data.response, data.media);
-                    
-                    // Salva chat solo per utenti registrati
-                    if (!isGuest && data.chat_saved) {
-                        chatHistory = data.chat_history || chatHistory;
-                        loadChatHistoryUI();
-                    }
+                    currentChatMessages.push({role: 'bot', content: data.response, media: data.media});
                 }
                 
             } catch (error) {
@@ -930,11 +962,23 @@ CHAT_HTML = """
         }
 
         async function logout() {
+            // Salva la chat corrente prima del logout
+            if (currentChatMessages.length > 0 && !isGuest) {
+                await saveCurrentChat();
+            }
+            
             try {
                 await fetch('/api/logout', { method: 'POST' });
             } catch(e) {}
             window.location.href = '/login';
         }
+        
+        // Salva automaticamente quando l'utente chiude la pagina
+        window.addEventListener('beforeunload', () => {
+            if (currentChatMessages.length > 0 && !isGuest) {
+                saveCurrentChat();
+            }
+        });
 
         document.getElementById('input').addEventListener('input', function() {
             this.style.height = 'auto';
@@ -1340,6 +1384,7 @@ def login():
             return jsonify({"success": False, "message": "Password errata"})
         
         session["username"] = username
+        session.permanent = True  # Sessione permanente (30 giorni)
         return jsonify({"success": True})
     except Exception as e:
         print(f"Login error: {e}")
@@ -1408,27 +1453,62 @@ def chat():
                 }
         
         else:
+            # Ottieni data e ora corrente
+            from datetime import datetime
+            import pytz
+            
+            now_utc = datetime.utcnow()
+            italy_tz = pytz.timezone('Europe/Rome')
+            now_italy = now_utc.replace(tzinfo=pytz.utc).astimezone(italy_tz)
+            
+            current_date = now_italy.strftime("%A, %d %B %Y")
+            current_time = now_italy.strftime("%H:%M")
+            
+            # Traduci il giorno in italiano se necessario
+            days_it = {
+                'Monday': 'Lunedì', 'Tuesday': 'Martedì', 'Wednesday': 'Mercoledì',
+                'Thursday': 'Giovedì', 'Friday': 'Venerdì', 'Saturday': 'Sabato', 'Sunday': 'Domenica'
+            }
+            months_it = {
+                'January': 'Gennaio', 'February': 'Febbraio', 'March': 'Marzo', 'April': 'Aprile',
+                'May': 'Maggio', 'June': 'Giugno', 'July': 'Luglio', 'August': 'Agosto',
+                'September': 'Settembre', 'October': 'Ottobre', 'November': 'Novembre', 'December': 'Dicembre'
+            }
+            
             messages = [
                 {
                     "role": "system",
-                    "content": """You are NEXUS, the most powerful and advanced AI assistant in the world. 
+                    "content": f"""You are NEXUS, the most powerful and advanced AI assistant in the world. You are modern, updated, and have access to current information.
 
-KEY INSTRUCTION: Always respond in the SAME LANGUAGE the user writes to you. If they write in Italian, respond in Italian. If they write in English, respond in English. If they write in Spanish, respond in Spanish, etc.
+CRITICAL LANGUAGE RULE: ALWAYS respond in the EXACT SAME LANGUAGE the user writes to you. 
+- If they write in Italian → respond in Italian
+- If they write in English → respond in English  
+- If they write in Spanish → respond in Spanish
+- If they write in French → respond in French
+Match the user's language perfectly!
 
-Characteristics:
-- Ultra-fast and intelligent
-- Expert in all fields: programming, math, science, art, writing
-- Creative, innovative and friendly
-- Give complete, clear and engaging answers
-- ALWAYS match the user's language automatically
+CURRENT INFORMATION (Always accurate and updated):
+📅 Today's Date: {current_date}
+🕐 Current Time: {current_time} (Italy timezone)
+📍 Year: {now_italy.year}
+🌍 You have knowledge up to January 2025
+
+Your characteristics:
+- Ultra-fast, intelligent, and modern
+- Expert in all fields: programming, AI, science, current events, technology
+- You know about recent events, current news, and modern trends
+- Creative, innovative, helpful and friendly
+- Always provide accurate, up-to-date information
 
 Special capabilities:
-🎨 HD image generation (user can ask "generate an image of...")
+🎨 HD image generation (user can ask "generate an image of..." or "genera un'immagine di...")
 👁️ Advanced image analysis (user can upload photos)
-💻 Expert programming
-📊 Analysis and problem solving
-✍️ Creative writing
+💻 Expert in modern programming languages and frameworks
+📊 Data analysis and problem solving
+✍️ Creative writing and content creation
+🌐 Current events and news knowledge (up to January 2025)
 
+When asked about time/date, always use the current information provided above.
 Always respond naturally and helpfully in the user's language."""
                 },
                 {
@@ -1445,30 +1525,9 @@ Always respond naturally and helpfully in the user's language."""
                 "response": ai_response
             }
         
-        # Salva chat solo per utenti registrati (non ospiti)
+        # Non salviamo più ogni singolo messaggio
         if not is_guest:
-            if "chat_history" not in user:
-                user["chat_history"] = []
-            
-            # Crea o aggiorna la chat corrente
-            current_chat = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "messages": [
-                    {"role": "user", "content": message, "media": None},
-                    {"role": "bot", "content": response_data.get("response", ""), "media": response_data.get("media")}
-                ]
-            }
-            
-            # Aggiungi alla cronologia (max 50 chat)
-            user["chat_history"].insert(0, current_chat)
-            user["chat_history"] = user["chat_history"][:50]
-            
             save_db()
-            
-            response_data["chat_saved"] = True
-            response_data["chat_history"] = user["chat_history"]
-        else:
-            response_data["chat_saved"] = False
         
         return jsonify(response_data)
     
@@ -1477,6 +1536,47 @@ Always respond naturally and helpfully in the user's language."""
         return jsonify({
             "error": f"Errore: {str(e)}"
         }), 500
+
+@app.route("/api/save-chat", methods=["POST"])
+def save_chat():
+    """Salva l'intera conversazione quando l'utente inizia una nuova chat o chiude"""
+    try:
+        if "username" not in session or session.get("is_guest"):
+            return jsonify({"success": False}), 401
+        
+        username = session.get("username")
+        user = USERS.get(username)
+        
+        if not user:
+            return jsonify({"success": False}), 404
+        
+        data = request.json
+        messages = data.get("messages", [])
+        timestamp = data.get("timestamp")
+        
+        if len(messages) == 0:
+            return jsonify({"success": False})
+        
+        if "chat_history" not in user:
+            user["chat_history"] = []
+        
+        # Crea nuova chat
+        new_chat = {
+            "timestamp": timestamp,
+            "messages": messages
+        }
+        
+        # Aggiungi alla cronologia (max 50 chat)
+        user["chat_history"].insert(0, new_chat)
+        user["chat_history"] = user["chat_history"][:50]
+        
+        save_db()
+        
+        return jsonify({"success": True})
+    
+    except Exception as e:
+        print(f"Save chat error: {e}")
+        return jsonify({"success": False}), 500
 
 @app.route("/api/activate-premium", methods=["POST"])
 def activate_premium():
@@ -1541,12 +1641,15 @@ if __name__ == "__main__":
     print(f"💎 Premium: {sum(1 for u in USERS.values() if u.get('premium', False))}")
     print("\n🌐 Server: http://127.0.0.1:5000")
     print("\n💡 ISTRUZIONI:")
-    print("   1. Registrati/Login")
-    print("   2. Il bot risponde automaticamente nella TUA lingua")
-    print("   3. Scrivi 'generate an image of...' o 'genera un'immagine di...'")
-    print("   4. Clicca 📎 per analizzare foto")
-    print("   5. Premium: clicca UPGRADE e usa 'PREMIUM-TEST123' per test")
-    print("   6. Cambia GUMROAD_PRODUCT_URL nel codice con il tuo link prodotto")
+    print("   1. Registrati/Login (oppure usa modalità Ospite)")
+    print("   2. Login PERMANENTE - non dovrai più rifare il login!")
+    print("   3. Il bot risponde nella TUA lingua automaticamente 🌍")
+    print("   4. Sa data, ora e tutto aggiornato a Gennaio 2025 📅")
+    print("   5. Chat salvate quando clicchi 'Nuova Chat' o chiudi")
+    print("   6. Genera immagini: 'genera/generate un'immagine di...' 🎨")
+    print("   7. Analizza foto: clicca 📎 e carica immagine 👁️")
+    print("   8. Premium €15/mese: usa 'PREMIUM-TEST123' per test")
+    print("\n📦 Installa: pip install flask groq bcrypt requests pytz")
     print("="*60 + "\n")
     
     app.run(debug=True, host="0.0.0.0", port=5000)
