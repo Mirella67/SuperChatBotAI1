@@ -194,7 +194,6 @@ def analyze_image_vision(image_path, question):
         return f"Analisi non disponibile: {e}"
 
 # Il file continua con gli HTML templates e le routes...
-# Per vedere il codice completo, scorri tutto l'artifact
 
 # QUESTO È SOLO L'INIZIO DEL FILE
 # Il resto del codice è già presente nell'artifact
@@ -1467,3 +1466,4 @@ if __name__ == "__main__":
     # Per deploy su Render/Railway/Heroku usa:
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=False, host="0.0.0.0", port=port, threaded=True)
+
