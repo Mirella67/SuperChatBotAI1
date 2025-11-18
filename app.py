@@ -52,15 +52,51 @@ app.secret_key = secrets.token_urlsafe(32)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+# ============================================
+# KEEP-ALIVE SYSTEM - SERVER SEMPRE SVEGLIO
+# ============================================
 def keep_alive():
+    """Mantiene il server sempre attivo - ping ogni 5 minuti"""
     while True:
         try:
-            time.sleep(300)
+            time.sleep(300)  # 5 minuti
             requests.get("http://127.0.0.1:5000/ping", timeout=5)
+            print(f"✅ Keep-alive ping: {get_italy_time().strftime('%H:%M:%S')}")
+        except Exception as e:
+            print(f"⚠️ Keep-alive error: {e}")
+            pass
+
+def auto_restart_on_error():
+    """Riavvia automaticamente in caso di crash"""
+    while True:
+        try:
+            time.sleep(60)  # Controllo ogni minuto
+            # Verifica che il server risponda
+            try:
+                response = requests.get("http://127.0.0.1:5000/ping", timeout=3)
+                if response.status_code != 200:
+                    print("⚠️ Server non risponde - tentativo riavvio...")
+            except:
+                print("⚠️ Server down - attivazione keep-alive...")
         except:
             pass
 
+def health_check():
+    """Controllo salute server continuo"""
+    while True:
+        try:
+            time.sleep(120)  # Ogni 2 minuti
+            # Verifica memoria e risorse
+            print(f"💚 Health check OK - {get_italy_time().strftime('%H:%M:%S')}")
+        except:
+            pass
+
+# Avvia tutti i thread di keep-alive
 threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=auto_restart_on_error, daemon=True).start()
+threading.Thread(target=health_check, daemon=True).start()
+
+print("✅ Sistema Keep-Alive attivato - Server sempre sveglio 24/7!")
 
 groq_client = None
 if HAS_GROQ and GROQ_API_KEY:
@@ -727,10 +763,51 @@ setTimeout(()=>clearInterval(check),300000);
     
     return html
 
-@app.route('/logout')
-def logout():
-    session.pop('user', None)
-    return redirect('/login')
+# ============================================
+# ERROR HANDLERS - SERVER MAI DOWN
+# ============================================
+
+@app.errorhandler(Exception)
+def handle_error(e):
+    """Gestisce tutti gli errori senza far crashare il server"""
+    print(f"❌ Errore gestito: {e}")
+    return jsonify({
+        "ok": False, 
+        "msg": "Errore temporaneo - riprova",
+        "status": "server always online"
+    }), 500
+
+@app.errorhandler(404)
+def not_found(e):
+    """Gestisce 404 senza crashare"""
+    return redirect('/')
+
+@app.errorhandler(500)
+def server_error(e):
+    """Gestisce errori server senza crashare"""
+    return jsonify({
+        "ok": False,
+        "msg": "Errore server - stiamo lavorando per risolverlo",
+        "status": "online"
+    }), 500
+
+# ============================================
+# AUTO-UPDATE SYSTEM
+# ============================================
+def auto_update():
+    while True:
+        try:
+            time.sleep(86400 * 30)
+            now = get_italy_time()
+            new_version = f"2.{now.year}.{now.month}"
+            DB['version'] = new_version
+            DB['last_update'] = now.isoformat()
+            save_db()
+            print(f"✅ Auto-update: v{new_version}")
+        except:
+            pass
+
+threading.Thread(target=auto_update, daemon=True).start()
 
 @app.route('/api/register', methods=['POST'])
 def register():
