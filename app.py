@@ -34,7 +34,7 @@ except ImportError:
 # ============================================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "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")
 GUMROAD_PRODUCT_ID = "superchatbot"
-GUMROAD_URL = f"https://micheleguerra.gumroad.com/l/superchatbot"
+GUMROAD_URL = f"https://micheleguerra.gumroad.com/l/{GUMROAD_PRODUCT_ID}"
 GUMROAD_WEBHOOK_SECRET = os.environ.get("GUMROAD_SECRET", "nexus_ai_secret_2025")
 DATA_FILE = "nexus_ai_data.json"
 VERSION = "2025.1.0"
@@ -446,12 +446,11 @@ background-size:400% 400%;animation:gradient 15s ease infinite;
 color:var(--text);overflow:hidden;height:100vh;
 }
 @keyframes gradient{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
-.container{display:flex;height:100vh;}
+.container{display:flex;height:100vh;position:relative;}
 .sidebar{
 width:280px;background:var(--bg-card);border-right:1px solid var(--border);
-display:flex;flex-direction:column;transition:transform 0.3s;z-index:100;
+display:flex;flex-direction:column;z-index:100;position:relative;
 }
-.sidebar.hidden{transform:translateX(-100%);}
 .sidebar-header{padding:20px;border-bottom:1px solid rgba(255,255,255,0.1);}
 .logo{display:flex;align-items:center;gap:12px;margin-bottom:15px;}
 .logo-icon{
@@ -469,7 +468,7 @@ background:linear-gradient(135deg,var(--primary),var(--secondary));
 padding:15px;background:rgba(102,126,234,0.1);border-radius:12px;font-size:13px;
 }
 .user-name{font-weight:700;margin-bottom:5px;}
-.user-plan{color:{{ 'var(--premium)' if is_premium else 'var(--text-muted)' }};font-size:11px;font-weight:600;}
+.user-plan{color:{% if is_premium %}var(--premium){% else %}var(--text-muted){% endif %};font-size:11px;font-weight:600;}
 .sidebar-menu{flex:1;padding:20px;overflow-y:auto;}
 .menu-item{
 padding:14px 16px;background:rgba(255,255,255,0.05);border-radius:12px;
@@ -491,11 +490,11 @@ font-weight:700;cursor:pointer;font-size:14px;transition:all 0.3s;min-height:48p
 .btn:active{transform:scale(0.97);}
 .btn-primary{
 background:linear-gradient(135deg,var(--primary),var(--secondary));
-color:var(--text);box-shadow:0 4px 15px rgba(102,126,234,0.3);
+color:var(--text);box-shadow:0 4px 15px rgba(102,126,234,0.3);margin-bottom:10px;
 }
 .btn-secondary{background:rgba(255,255,255,0.05);color:var(--text-muted);margin-bottom:10px;}
 .btn-logout{background:rgba(255,107,107,0.15);color:var(--error);border:1px solid rgba(255,107,107,0.3);}
-.main{flex:1;display:flex;flex-direction:column;}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;}
 .header{
 padding:20px;background:var(--bg-card);border-bottom:1px solid var(--border);
 display:flex;align-items:center;justify-content:space-between;
@@ -508,7 +507,7 @@ border:none;border-radius:12px;color:var(--text);font-size:20px;cursor:pointer;
 .chat-area{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;}
 .message{
 max-width:85%;padding:16px 20px;border-radius:18px;
-line-height:1.6;animation:slideIn 0.3s;font-size:15px;
+line-height:1.6;animation:slideIn 0.3s;font-size:15px;word-wrap:break-word;
 }
 @keyframes slideIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
 .message.user{
@@ -548,17 +547,18 @@ textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgb
 .file-btn{
 position:absolute;right:12px;bottom:12px;width:40px;height:40px;
 background:rgba(102,126,234,0.2);border:none;border-radius:10px;
-cursor:pointer;font-size:18px;
+cursor:pointer;font-size:18px;color:var(--text);
 }
 .send-btn{
 width:55px;height:55px;background:linear-gradient(135deg,var(--primary),var(--secondary));
 border:none;border-radius:14px;font-size:22px;cursor:pointer;
-box-shadow:0 4px 15px rgba(102,126,234,0.3);
+box-shadow:0 4px 15px rgba(102,126,234,0.3);flex-shrink:0;
 }
 .send-btn:hover{box-shadow:0 6px 20px rgba(102,126,234,0.4);transform:translateY(-2px);}
-.send-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.send-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
 @media(max-width:768px){
-.sidebar{position:fixed;left:0;top:0;height:100vh;}
+.sidebar{position:fixed;left:0;top:0;height:100vh;transform:translateX(-100%);transition:transform 0.3s;}
+.sidebar.show{transform:translateX(0);}
 .menu-toggle{display:block;}
 .message{max-width:90%;font-size:14px;}
 .video-container{max-width:100%;}
@@ -567,7 +567,7 @@ box-shadow:0 4px 15px rgba(102,126,234,0.3);
 </head>
 <body>
 <div class="container">
-<div class="sidebar{{ ' hidden' if not is_guest else '' }}" id="sidebar">
+<div class="sidebar" id="sidebar">
 <div class="sidebar-header">
 <div class="logo">
 <div class="logo-icon">⚡</div>
@@ -575,7 +575,7 @@ box-shadow:0 4px 15px rgba(102,126,234,0.3);
 </div>
 <div class="user-info">
 <div class="user-name">{{ session['user'] }}</div>
-<div class="user-plan">{{ '💎 Premium' if is_premium else '🆓 Gratis' }}</div>
+<div class="user-plan">{% if is_premium %}💎 Premium{% else %}🆓 Gratis{% endif %}</div>
 </div>
 </div>
 <div class="sidebar-menu">
@@ -606,10 +606,10 @@ box-shadow:0 4px 15px rgba(102,126,234,0.3);
 </div>
 <div class="main">
 <div class="header">
-<button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+<button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()">☰</button>
 <div>
 <div class="header-title">⚡ NEXUS AI</div>
-<div class="header-stats">Il Bot Supremo dell'Universo</div>
+<div style="font-size:12px;color:#aaa;">Il Bot Supremo dell'Universo</div>
 </div>
 </div>
 <div class="chat-area" id="chat">
@@ -641,31 +641,25 @@ onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
 </div>
 <script>
 let currentFile=null;
-const premium={{ 'true' if is_premium else 'false' }};
-const isGuest={{ 'true' if is_guest else 'false' }};
+const premium={% if is_premium %}true{% else %}false{% endif %};
+const isGuest={% if is_guest %}true{% else %}false{% endif %};
 
 function toggleSidebar(){
-document.getElementById('sidebar').classList.toggle('hidden');
+const sidebar=document.getElementById('sidebar');
+sidebar.classList.toggle('show');
 }
 
 function newChat(){
-document.getElementById('chat').innerHTML=`
-<div class="message ai">
-👋 <strong>Nuova chat iniziata!</strong><br><br>
-Come posso aiutarti? Sono esperto in:<br>
-💰 Investimenti (azioni, crypto, forex)<br>
-💻 Programmazione e tech<br>
-🎨 Creatività e design<br>
-📊 Business e marketing<br><br>
-<strong>Chiedimi qualsiasi cosa!</strong> 😊
-</div>`;
-if(window.innerWidth<=768)document.getElementById('sidebar').classList.add('hidden');
+document.getElementById('chat').innerHTML='<div class="message ai">👋 <strong>Nuova chat iniziata!</strong><br><br>Come posso aiutarti? Sono esperto in:<br>💰 Investimenti (azioni, crypto, forex)<br>💻 Programmazione e tech<br>🎨 Creatività e design<br>📊 Business e marketing<br><br><strong>Chiedimi qualsiasi cosa!</strong> 😊</div>';
+if(window.innerWidth<=768){
+document.getElementById('sidebar').classList.remove('show');
+}
 document.getElementById('input').focus();
 }
 
 function showFeature(type){
 if(!premium&&type!=='chat'){
-if(confirm('⭐ Questa funzione richiede Premium.\n\nVuoi fare l\'upgrade ora?')){
+if(confirm('⭐ Questa funzione richiede Premium.\\n\\nVuoi fare l\\'upgrade ora?')){
 location.href='/upgrade';
 }
 return;
@@ -673,10 +667,12 @@ return;
 const messages={
 'image':'🎨 <strong>Genera Immagine HD</strong><br><br>Descrivi cosa vuoi che crei!<br><br>Es: "Un tramonto sul mare con una barca a vela"',
 'video':'🎬 <strong>Genera Video</strong><br><br>Descrivi la scena che vuoi vedere!<br><br>Es: "Una foresta con nebbia che si muove"',
-'vision':'👁️ <strong>Analizza Immagine</strong><br><br>Carica un\'immagine e ti dirò tutto!'
+'vision':'👁️ <strong>Analizza Immagine</strong><br><br>Carica un\\'immagine e ti dirò tutto!'
 };
 addMessage('ai',messages[type]);
-if(window.innerWidth<=768)document.getElementById('sidebar').classList.add('hidden');
+if(window.innerWidth<=768){
+document.getElementById('sidebar').classList.remove('show');
+}
 document.getElementById('input').focus();
 }
 
@@ -697,7 +693,7 @@ const fileInput=document.getElementById('fileInput');
 const file=fileInput.files[0];
 if(file){
 if(!premium){
-alert('⭐ L\'analisi immagini richiede Premium!');
+alert('⭐ L\\'analisi immagini richiede Premium!');
 fileInput.value='';
 return;
 }
@@ -707,7 +703,7 @@ fileInput.value='';
 return;
 }
 currentFile=file;
-addMessage('user',`📎 <strong>Immagine caricata:</strong> ${file.name}<br><small>Ora scrivi cosa vuoi sapere</small>`);
+addMessage('user','📎 <strong>Immagine caricata:</strong> '+file.name+'<br><small>Ora scrivi cosa vuoi sapere</small>');
 }
 }
 
@@ -721,9 +717,13 @@ chat.scrollTop=chat.scrollHeight;
 }
 
 async function sendMessage(){
+console.log('sendMessage chiamata');
 const input=document.getElementById('input');
 const text=input.value.trim();
-if(!text&&!currentFile)return;
+if(!text&&!currentFile){
+console.log('Nessun testo');
+return;
+}
 
 const sendBtn=document.getElementById('sendBtn');
 sendBtn.disabled=true;
@@ -745,32 +745,28 @@ currentFile=null;
 document.getElementById('fileInput').value='';
 }
 
+console.log('Invio richiesta...');
 const response=await fetch('/api/chat',{method:'POST',body:formData});
+console.log('Risposta:',response.status);
 const data=await response.json();
+console.log('Dati:',data);
 
 document.getElementById('typing').classList.remove('active');
 
 if(data.ok){
 if(data.type==='video'&&data.url){
-addMessage('ai',`
-<strong>🎬 Video Generato!</strong><br><br>
-<div class="video-container">
-<img src="${data.url}" alt="Video generato" loading="lazy">
-</div>
-`);
+addMessage('ai','<strong>🎬 Video Generato!</strong><br><br><div class="video-container"><img src="'+data.url+'" alt="Video" loading="lazy"></div>');
 }else if(data.type==='image'&&data.url){
-addMessage('ai',`
-<strong>🎨 Immagine Creata!</strong><br><br>
-<img src="${data.url}" alt="Immagine generata" loading="lazy">
-`);
+addMessage('ai','<strong>🎨 Immagine Creata!</strong><br><br><img src="'+data.url+'" alt="Immagine" loading="lazy">');
 }else{
 const formatted=data.response.replace(/\n/g,'<br>');
 addMessage('ai',formatted);
 }
 }else{
-addMessage('ai',`❌ <strong>Errore:</strong> ${data.msg||'Qualcosa è andato storto'}`);
+addMessage('ai','❌ <strong>Errore:</strong> '+(data.msg||'Errore'));
 }
 }catch(error){
+console.error('Errore:',error);
 document.getElementById('typing').classList.remove('active');
 addMessage('ai','❌ <strong>Errore di connessione.</strong> Riprova!');
 }
@@ -786,7 +782,7 @@ location.href='/logout';
 }
 
 document.getElementById('input').focus();
-if(window.innerWidth<=768)document.getElementById('sidebar').classList.add('hidden');
+console.log('Script caricato');
 </script>
 </body>
 </html>''', session=session, is_premium=is_premium, is_guest=is_guest)
@@ -882,159 +878,83 @@ cursor:pointer;min-height:48px;box-shadow:0 4px 15px rgba(102,126,234,0.3);
 </form>
 </div>
 <script>
-let currentFile=null;
-const premium={{ 'true' if is_premium else 'false' }};
-const isGuest={{ 'true' if is_guest else 'false' }};
-
-function toggleSidebar(){
-const sidebar=document.getElementById('sidebar');
-sidebar.classList.toggle('show');
+function switchTab(type){
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+event.target.classList.add('active');
+document.getElementById('loginForm').classList.toggle('active',type==='login');
+document.getElementById('regForm').classList.toggle('active',type==='register');
 }
 
-function newChat(){
-document.getElementById('chat').innerHTML=`
-<div class="message ai">
-👋 <strong>Nuova chat iniziata!</strong><br><br>
-Come posso aiutarti? Sono esperto in:<br>
-💰 Investimenti (azioni, crypto, forex)<br>
-💻 Programmazione e tech<br>
-🎨 Creatività e design<br>
-📊 Business e marketing<br><br>
-<strong>Chiedimi qualsiasi cosa!</strong> 😊
-</div>`;
-if(window.innerWidth<=768){
-document.getElementById('sidebar').classList.remove('show');
-}
-document.getElementById('input').focus();
+function showMsg(txt,type){
+const msg=document.getElementById('msg');
+msg.textContent=txt;
+msg.className='msg '+(type==='ok'?'ok':'err');
+msg.style.display='block';
 }
 
-function showFeature(type){
-if(!premium&&type!=='chat'){
-if(confirm('⭐ Questa funzione richiede Premium.\\n\\nVuoi fare l\\'upgrade ora?')){
-location.href='/upgrade';
-}
-return;
-}
-const messages={
-'image':'🎨 <strong>Genera Immagine HD</strong><br><br>Descrivi cosa vuoi che crei!<br><br>Es: "Un tramonto sul mare con una barca a vela"',
-'video':'🎬 <strong>Genera Video</strong><br><br>Descrivi la scena che vuoi vedere!<br><br>Es: "Una foresta con nebbia che si muove"',
-'vision':'👁️ <strong>Analizza Immagine</strong><br><br>Carica un\\'immagine e ti dirò tutto!'
-};
-addMessage('ai',messages[type]);
-if(window.innerWidth<=768){
-document.getElementById('sidebar').classList.remove('show');
-}
-document.getElementById('input').focus();
-}
-
-function handleKey(e){
-if(e.key==='Enter'&&!e.shiftKey){
+async function handleLogin(e){
 e.preventDefault();
-sendMessage();
-}
-}
+const btn=e.target.querySelector('button');
+btn.disabled=true;
+btn.textContent='⏳ Accesso...';
 
-function autoResize(textarea){
-textarea.style.height='auto';
-textarea.style.height=Math.min(textarea.scrollHeight,150)+'px';
-}
-
-function handleFile(){
-const fileInput=document.getElementById('fileInput');
-const file=fileInput.files[0];
-if(file){
-if(!premium){
-alert('⭐ L\\'analisi immagini richiede Premium!');
-fileInput.value='';
-return;
-}
-if(file.size>10*1024*1024){
-alert('❌ Immagine troppo grande! Max 10MB');
-fileInput.value='';
-return;
-}
-currentFile=file;
-addMessage('user','📎 <strong>Immagine caricata:</strong> '+file.name+'<br><small>Ora scrivi cosa vuoi sapere</small>');
-}
-}
-
-function addMessage(type,content){
-const chat=document.getElementById('chat');
-const msg=document.createElement('div');
-msg.className='message '+type;
-msg.innerHTML=content;
-chat.appendChild(msg);
-chat.scrollTop=chat.scrollHeight;
-}
-
-async function sendMessage(){
-console.log('sendMessage chiamata');
-const input=document.getElementById('input');
-const text=input.value.trim();
-if(!text&&!currentFile){
-console.log('Nessun testo o file');
-return;
-}
-
-const sendBtn=document.getElementById('sendBtn');
-sendBtn.disabled=true;
-
-if(text){
-addMessage('user',text);
-input.value='';
-input.style.height='auto';
-}
-
-document.getElementById('typing').classList.add('active');
+const formData=new FormData(e.target);
+const data=Object.fromEntries(formData);
 
 try{
-const formData=new FormData();
-formData.append('message',text);
-if(currentFile){
-formData.append('image',currentFile);
-currentFile=null;
-document.getElementById('fileInput').value='';
-}
+const response=await fetch('/api/login',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(data)
+});
+const result=await response.json();
 
-console.log('Invio richiesta a /api/chat');
-const response=await fetch('/api/chat',{method:'POST',body:formData});
-console.log('Risposta ricevuta:',response.status);
-const data=await response.json();
-console.log('Dati:',data);
-
-document.getElementById('typing').classList.remove('active');
-
-if(data.ok){
-if(data.type==='video'&&data.url){
-addMessage('ai','<strong>🎬 Video Generato!</strong><br><br><div class="video-container"><img src="'+data.url+'" alt="Video generato" loading="lazy"></div>');
-}else if(data.type==='image'&&data.url){
-addMessage('ai','<strong>🎨 Immagine Creata!</strong><br><br><img src="'+data.url+'" alt="Immagine generata" loading="lazy">');
+if(result.ok){
+showMsg('✅ Login effettuato!','ok');
+setTimeout(()=>window.location.href='/',1000);
 }else{
-const formatted=data.response.replace(/\n/g,'<br>');
-addMessage('ai',formatted);
-}
-}else{
-addMessage('ai','❌ <strong>Errore:</strong> '+(data.msg||'Qualcosa è andato storto'));
+showMsg('❌ '+result.msg,'err');
+btn.disabled=false;
+btn.textContent='🚀 Accedi';
 }
 }catch(error){
-console.error('Errore catch:',error);
-document.getElementById('typing').classList.remove('active');
-addMessage('ai','❌ <strong>Errore di connessione.</strong> Riprova!');
-}
-
-sendBtn.disabled=false;
-input.focus();
-}
-
-function logout(){
-if(confirm('🚪 Vuoi davvero uscire?')){
-location.href='/logout';
+showMsg('❌ Errore di connessione','err');
+btn.disabled=false;
+btn.textContent='🚀 Accedi';
 }
 }
 
-// Inizializzazione
-document.getElementById('input').focus();
-console.log('Script caricato, premium:',premium);
+async function handleReg(e){
+e.preventDefault();
+const btn=e.target.querySelector('button');
+btn.disabled=true;
+btn.textContent='⏳ Creazione...';
+
+const formData=new FormData(e.target);
+const data=Object.fromEntries(formData);
+
+try{
+const response=await fetch('/api/register',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(data)
+});
+const result=await response.json();
+
+if(result.ok){
+showMsg('✅ Account creato!','ok');
+setTimeout(()=>window.location.href='/select-plan',1500);
+}else{
+showMsg('❌ '+result.msg,'err');
+btn.disabled=false;
+btn.textContent='✨ Crea Account';
+}
+}catch(error){
+showMsg('❌ Errore di connessione','err');
+btn.disabled=false;
+btn.textContent='✨ Crea Account';
+}
+}
 </script>
 </body>
 </html>''')
@@ -1165,7 +1085,7 @@ h1{font-size:36px;}
 
 @app.route('/upgrade')
 def upgrade():
-    """Pagina upgrade Premium con pagamento Gumroad integrato"""
+    """Pagina upgrade Premium"""
     if 'user' not in session:
         return redirect('/login')
     
@@ -1259,7 +1179,6 @@ data-gumroad-overlay-checkout="true">
 </div>
 </div>
 <script>
-// Check premium status ogni 3 secondi dopo click
 let checking=false;
 document.querySelector('.gumroad-button').addEventListener('click',function(){
 if(checking)return;
@@ -1270,20 +1189,16 @@ const response=await fetch('/api/check-premium');
 const data=await response.json();
 if(data.premium){
 clearInterval(interval);
-alert('🎉 Benvenuto in Premium!\n\nOra hai accesso a TUTTE le funzionalità!');
+alert('🎉 Benvenuto in Premium!\\n\\nOra hai accesso a TUTTE le funzionalità!');
 window.location.href='/';
 }
 }catch(e){}
 },3000);
-setTimeout(()=>clearInterval(interval),300000); // Stop dopo 5 min
+setTimeout(()=>clearInterval(interval),300000);
 });
 </script>
 </body>
 </html>''', gumroad_url=GUMROAD_URL, user_id=user_id)
-
-# ============================================
-# API ROUTES
-# ============================================
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -1357,7 +1272,7 @@ def api_login():
         return jsonify({"ok": True})
         
     except Exception as e:
-        return jsonify({"ok": False, "msg":f"Errore: {str(e)}"})
+        return jsonify({"ok": False, "msg": f"Errore: {str(e)}"})
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -1503,11 +1418,18 @@ if __name__ == '__main__':
     print(f"🕐 Ora Italia: {get_italy_time().strftime('%d/%m/%Y %H:%M:%S')}")
     print(f"👥 Utenti: {len(USERS)}")
     print(f"💎 Premium: {sum(1 for u in USERS.values() if u.get('premium'))}")
+    print(f"📊 Chat totali: {STATS.get('total_chats', 0)}")
+    print(f"🎨 Immagini: {STATS.get('total_images', 0)}")
+    print(f"🎬 Video: {STATS.get('total_videos', 0)}")
     print(f"✅ Groq AI: {'Connesso' if groq_client else 'Non disponibile'}")
+    print(f"💚 Keep-Alive: Attivo")
     print("="*60)
-    print("🚀 SERVER: http://127.0.0.1:5000")
+    print("🚀 SERVER AVVIATO SU http://127.0.0.1:5000")
     print("="*60 + "\n")
     
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
-
-
+    app.run(
+        host='0.0.0.0',
+        port=5000,
+        debug=False,
+        threaded=True
+    )
